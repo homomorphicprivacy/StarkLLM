@@ -1,0 +1,40 @@
+# Data and local DBs
+data/
+knowledge_base_data/
+*.db
+*.sqlite
+
+# Environment secrets
+.env
+.env.local
+
+# Python caches and virtual environments
+__pycache__/
+*.pyc
+venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node modules and build output
+node_modules/
+dist/
+build/
+.next/
+
+# IDE and temporary files
+.vscode/
+.idea/
+.gemini/
+scratch/
+*.zip
+*.log
+css_dump.css
+e2e_test.ps1
+completteinformation.docx
+live_download.html
+live_download2.html
+
+# Website directory (separate repo)
+website/

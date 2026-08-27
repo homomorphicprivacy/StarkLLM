@@ -1,0 +1,66 @@
+.bannerContainer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  margin: 1rem 1rem 0;
+  padding: 1rem;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.bannerContent {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.iconWrapper {
+  color: #ef4444;
+  margin-top: 2px;
+}
+
+.errorList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bannerTitle {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.errorItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.itemIcon {
+  color: var(--text-secondary);
+}
+
+.dismissBtn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.dismissBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}

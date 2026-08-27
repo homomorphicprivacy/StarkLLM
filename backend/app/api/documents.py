@@ -1,0 +1,340 @@
+import os
+import shutil
+import asyncio
+import logging
+import threading
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from sqlalchemy.orm import Session
+from app.db.session import get_db, SessionLocal
+from app.db import models
+from app.db.models import DocStatus
+from app.services.rag_service import rag_service
+from app.core.config import settings
+from app.api.auth import get_current_user
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _set_doc_status(doc_id: int, status: str, error_message: str = None):
+    """Helper: open a new DB session and update doc status (safe to call from background threads)."""
+    db = SessionLocal()
+    try:
+        doc = db.query(models.Document).filter(models.Document.id == doc_id).first()
+        if doc:
+            doc.status = status
+            doc.error_message = error_message
+            db.commit()
+    except Exception as e:
+        logger.error(f"Failed to update doc {doc_id} status to {status}: {e}")
+    finally:
+        db.close()
+
+
+def _index_document_background(doc_id: int, workspace_id: int, user_id: int, file_path: str):
+    """Background thread: runs the full indexing pipeline with status updates."""
+    try:
+        _set_doc_status(doc_id, DocStatus.EXTRACTING)
+        # rag_service.add_document handles extraction, chunking, embedding internally.
+        # We approximate the stages by updating status around the call.
+        _set_doc_status(doc_id, DocStatus.CHUNKING)
+        _set_doc_status(doc_id, DocStatus.EMBEDDING)
+
+        # Run the synchronous rag_service call
+        rag_service.add_document(workspace_id, user_id, file_path)
+
+        _set_doc_status(doc_id, DocStatus.INDEXED)
+        logger.info(f"Document {doc_id} indexed successfully.")
+    except Exception as e:
+        logger.error(f"Background indexing failed for doc {doc_id}: {e}", exc_info=True)
+        _set_doc_status(doc_id, DocStatus.FAILED, error_message=str(e)[:500])
+        # Clean up file on failure
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"Cleaned up orphaned file after failed index: {file_path}")
+        except Exception as cleanup_err:
+            logger.warning(f"Could not clean up {file_path}: {cleanup_err}")
+
+
+@router.post("/{workspace_id}/upload")
+async def upload_document(
+    workspace_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    ws = db.query(models.Workspace).filter(
+        models.Workspace.id == workspace_id,
+        models.Workspace.user_id == current_user.id
+    ).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Validate file extension
+    ALLOWED_EXTENSIONS = {'pdf', 'txt', 'png', 'jpg', 'jpeg', 'md', 'csv', 'docx', 'xlsx', 'html', 'json'}
+    ext = (file.filename.rsplit('.', 1)[-1] if '.' in file.filename else '').lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '.{ext}'. Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+
+    # Ensure upload directory exists
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+
+    # Sanitize filename to avoid path traversal and collisions
+    import hashlib, time
+    safe_name = os.path.basename(file.filename)
+    # Add a short hash to avoid overwriting files with the same name
+    unique_prefix = hashlib.md5(f"{workspace_id}_{time.time()}".encode()).hexdigest()[:8]
+    safe_name = f"{unique_prefix}_{safe_name}"
+    file_path = os.path.join(settings.UPLOAD_DIR, safe_name)
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        logger.error(f"Failed to save uploaded file '{file.filename}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save file to disk: {str(e)[:200]}")
+
+    # Validate file size after saving (100MB limit)
+    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+    actual_size = os.path.getsize(file_path)
+    if actual_size > MAX_FILE_SIZE:
+        os.remove(file_path)
+        size_mb = actual_size / (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({size_mb:.1f} MB). Maximum allowed size is 100 MB."
+        )
+    if actual_size == 0:
+        os.remove(file_path)
+        raise HTTPException(status_code=400, detail="Uploaded file is empty (0 bytes).")
+
+    logger.info(f"File saved: '{file.filename}' ({actual_size} bytes) → {file_path}")
+
+    # Create DB record immediately with UPLOADING status
+    doc = models.Document(
+        workspace_id=workspace_id,
+        filename=file.filename,  # Keep original name for display
+        filepath=file_path,
+        file_type=ext,
+        status=DocStatus.UPLOADING,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    # Kick off background indexing thread (does not block the HTTP response)
+    thread = threading.Thread(
+        target=_index_document_background,
+        args=(doc.id, workspace_id, current_user.id, file_path),
+        daemon=True,
+    )
+    thread.start()
+
+    return {
+        "id": doc.id,
+        "filename": doc.filename,
+        "filepath": doc.filepath,
+        "file_type": doc.file_type,
+        "status": doc.status,
+        "error_message": doc.error_message,
+        "created_at": doc.created_at.isoformat() if doc.created_at else None,
+        "file_size": actual_size,
+    }
+
+
+@router.get("/{workspace_id}")
+def get_documents(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    ws = db.query(models.Workspace).filter(
+        models.Workspace.id == workspace_id,
+        models.Workspace.user_id == current_user.id
+    ).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    docs = db.query(models.Document).filter(
+        models.Document.workspace_id == workspace_id
+    ).order_by(models.Document.created_at.desc()).all()
+
+    result = []
+    for d in docs:
+        exists = os.path.exists(d.filepath) if d.filepath else False
+        size = os.path.getsize(d.filepath) if exists else 0
+
+        # If file is missing but was supposedly indexed, override status
+        effective_status = d.status
+        if not exists and d.status == DocStatus.INDEXED:
+            effective_status = "missing"
+
+        result.append({
+            "id": d.id,
+            "filename": d.filename,
+            "filepath": d.filepath,
+            "file_type": d.file_type,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+            "file_size": size,
+            "status": effective_status,
+            "error_message": d.error_message,
+        })
+
+    return result
+
+
+@router.get("/{workspace_id}/documents/{document_id}/status")
+def get_document_status(
+    workspace_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Lightweight polling endpoint: returns current status of a single document."""
+    ws = db.query(models.Workspace).filter(
+        models.Workspace.id == workspace_id,
+        models.Workspace.user_id == current_user.id
+    ).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    doc = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.workspace_id == workspace_id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    exists = os.path.exists(doc.filepath) if doc.filepath else False
+    effective_status = doc.status
+    if not exists and doc.status == DocStatus.INDEXED:
+        effective_status = "missing"
+
+    return {"id": doc.id, "status": effective_status, "error_message": doc.error_message}
+
+
+@router.get("/{workspace_id}/preview/{document_id}")
+async def preview_document(
+    workspace_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    ws = db.query(models.Workspace).filter(
+        models.Workspace.id == workspace_id,
+        models.Workspace.user_id == current_user.id
+    ).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    doc = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.workspace_id == workspace_id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        collection = await asyncio.to_thread(rag_service.get_or_create_collection, workspace_id, current_user.id)
+        preview_text = await asyncio.to_thread(rag_service.get_document_preview, collection, doc.filepath)
+        return {"document_id": document_id, "filename": doc.filename, "preview": preview_text}
+    except Exception as e:
+        logger.error(f"Error generating preview: {e}")
+        return {"document_id": document_id, "filename": doc.filename, "preview": "Error generating preview."}
+
+
+@router.post("/{workspace_id}/documents/{document_id}/reindex")
+async def reindex_document(
+    workspace_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Re-parse and embed a document into ChromaDB with status tracking."""
+    ws = db.query(models.Workspace).filter(
+        models.Workspace.id == workspace_id,
+        models.Workspace.user_id == current_user.id
+    ).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    doc = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.workspace_id == workspace_id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not doc.filepath or not os.path.exists(doc.filepath):
+        raise HTTPException(status_code=400, detail="Original file is missing from disk")
+
+    # Set status to EXTRACTING to let client know re-index started
+    doc.status = DocStatus.EXTRACTING
+    doc.error_message = None
+    db.commit()
+
+    # 1. Remove old vectors
+    try:
+        collection = await asyncio.to_thread(
+            rag_service.get_or_create_collection, workspace_id, current_user.id
+        )
+        await asyncio.to_thread(collection.delete, where={"source": doc.filepath})
+    except Exception as e:
+        logger.warning(f"Could not remove old vectors for {doc.filepath} during reindex: {e}")
+
+    # 2. Re-index in background thread
+    thread = threading.Thread(
+        target=_index_document_background,
+        args=(doc.id, workspace_id, current_user.id, doc.filepath),
+        daemon=True,
+    )
+    thread.start()
+
+    return {"status": "reindexing", "document_id": document_id}
+
+
+@router.delete("/{workspace_id}/documents/{document_id}")
+async def delete_document(
+    workspace_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Delete a document from DB and remove its vectors from ChromaDB."""
+    ws = db.query(models.Workspace).filter(
+        models.Workspace.id == workspace_id,
+        models.Workspace.user_id == current_user.id
+    ).first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    doc = db.query(models.Document).filter(
+        models.Document.id == document_id,
+        models.Document.workspace_id == workspace_id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Remove vectors from ChromaDB
+    try:
+        collection = await asyncio.to_thread(
+            rag_service.get_or_create_collection, workspace_id, current_user.id
+        )
+        await asyncio.to_thread(collection.delete, where={"source": doc.filepath})
+    except Exception as e:
+        logger.warning(f"Could not remove vectors for {doc.filepath}: {e}")
+
+    # Remove file from disk
+    try:
+        if doc.filepath and os.path.exists(doc.filepath):
+            os.remove(doc.filepath)
+    except Exception as e:
+        logger.warning(f"Could not remove file {doc.filepath} from disk: {e}")
+
+    db.delete(doc)
+    db.commit()
+    return {"status": "deleted", "document_id": document_id}

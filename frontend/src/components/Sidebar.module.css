@@ -1,0 +1,912 @@
+/* ====================================================
+   Sidebar — StarkLLM (Redesigned)
+   ==================================================== */
+
+.container {
+  width: var(--sidebar-width);
+  background: rgba(8, 10, 16, 0.75);
+  backdrop-filter: blur(32px) saturate(1.6);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 2px 0 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+}
+
+/* ── Brand ── */
+.brandBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  width: 100%;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.brandBtn:hover {
+  background: var(--bg-hover);
+}
+
+.brandLogo {
+  width: 52px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px var(--accent-glow));
+}
+
+.brandName {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(90deg, #e0e7ff, var(--accent-bright));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Global Search Button ── */
+.globalSearchBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 10px 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  width: calc(100% - 20px);
+  text-align: left;
+  transition: var(--transition-fast);
+}
+
+.globalSearchBtn:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.25);
+}
+
+.globalSearchIcon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.globalSearchLabel {
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.globalSearchKbd {
+  font-family: var(--font-main);
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 2px 5px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Navigation ── */
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px 8px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-align: left;
+}
+
+.navItem:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  transform: translateX(2px);
+}
+
+.navActive {
+  background: var(--bg-active) !important;
+  color: var(--accent-bright) !important;
+  border-left: 3px solid var(--accent-bright);
+  padding-left: 9px;
+  box-shadow: inset 0 0 12px var(--accent-glow);
+}
+
+.navIcon { flex-shrink: 0; }
+
+.navChevron {
+  margin-left: auto;
+  opacity: 0.4;
+}
+
+/* ── Shared Section Labels ── */
+.sectionLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.sectionHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 6px;
+  background: none;
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  color: inherit;
+}
+
+.addBtnSmall {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.addBtnSmall:hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  color: #fff;
+}
+
+.emptyHint {
+  padding: 6px 4px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+/* ── Workspace Selector (Compact Dropdown) ── */
+.wsSelector {
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+.wsSelectorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 6px;
+}
+
+.wsDropdownTrigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-align: left;
+}
+.wsDropdownTrigger:hover {
+  border-color: var(--accent-bright);
+  background: var(--bg-active);
+}
+
+.wsDropdownIcon {
+  flex-shrink: 0;
+  opacity: 0.7;
+  color: var(--accent-bright);
+}
+
+.wsDropdownLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wsDropdownChevron {
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: transform 0.2s ease;
+}
+.wsChevronOpen {
+  transform: rotate(180deg);
+}
+
+.wsDropdownMenu {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 100%;
+  margin-top: 6px;
+  background: rgba(10, 13, 20, 0.75);
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 6px;
+  animation: dropdownFade 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes dropdownFade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.wsDropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-align: left;
+}
+.wsDropdownItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.wsDropdownActive {
+  background: var(--bg-active);
+  color: var(--accent-bright);
+}
+
+/* ── Chat Sessions Section ── */
+.chatSection {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 80px;
+  padding: 10px 10px 4px;
+  border-top: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+/* ── Chat Search ── */
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  margin: 6px 0 6px;
+  transition: all 0.2s ease;
+}
+
+.searchBox:focus-within {
+  border-color: rgba(99, 102, 241, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.searchIcon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+}
+
+.searchBox:focus-within .searchIcon {
+  color: var(--accent-bright);
+}
+
+.searchInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-family: var(--font-main);
+  min-width: 0;
+}
+
+.searchInput::placeholder {
+  color: var(--text-muted);
+}
+
+.searchClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: var(--transition-fast);
+}
+
+.searchClear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.searchEmptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.searchEmptyIcon {
+  opacity: 0.3;
+  margin-bottom: 2px;
+}
+
+.searchEmptyQuery {
+  color: var(--accent-bright);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.chatList {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 4px;
+}
+
+
+.chatItem {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  transition: var(--transition-fast);
+  min-height: 34px;
+  position: relative;
+}
+
+.chatItem:hover .chatActions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chatSelectBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+  transition: var(--transition-fast);
+}
+
+.chatSelectBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.chatActive .chatSelectBtn {
+  color: var(--accent-bright);
+  background: var(--bg-active);
+  border-left: 3px solid var(--accent-bright);
+  padding-left: 5px;
+  box-shadow: inset 0 0 12px var(--accent-glow);
+}
+
+.chatIcon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.chatName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.chatDeleteBtn {
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition-fast);
+  margin-right: 4px;
+}
+
+.chatDeleteBtn:hover {
+  background: rgba(239,68,68,0.15);
+  color: var(--danger);
+}
+
+/* ── Chat Actions Group (Rename + Delete) ── */
+.chatActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+  padding-right: 4px;
+}
+
+/* Actions are shown on hover only — see .chatItem:hover .chatActions above */
+
+.chatActionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.chatActionBtn:hover {
+  background: var(--bg-active);
+  color: var(--accent-bright);
+}
+
+.chatActionDanger:hover {
+  background: rgba(239,68,68,0.15);
+  color: var(--danger);
+}
+
+.chatActionActive {
+  background: var(--bg-active);
+  color: var(--accent-bright);
+}
+
+.moveDropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: -20px;
+  background: rgba(10, 13, 20, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+  padding: 4px;
+  z-index: 50;
+  width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.moveDropdownHeader {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 6px 2px;
+  text-transform: uppercase;
+}
+
+.moveDropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition-fast);
+}
+
+.moveDropdownItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Chat Info (title + time + content match) ── */
+.chatInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chatMeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.chatTime {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.contentMatchBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent-bright);
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 4px;
+  padding: 1px 5px 1px 4px;
+  line-height: 1.4;
+  white-space: nowrap;
+  flex-shrink: 0;
+  animation: fadeInBadge 0.2s ease;
+}
+
+@keyframes fadeInBadge {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Inline Rename ── */
+.renameRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  width: 100%;
+}
+
+.renameInput {
+  flex: 1;
+  padding: 4px 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--accent-bright);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+  transition: border-color 0.2s ease;
+}
+
+.renameInput:focus {
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+/* ── Delete Confirmation (shared) ── */
+.deleteConfirm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  width: 100%;
+}
+
+.deletePrompt {
+  font-size: 0.68rem;
+  color: var(--danger);
+  flex: 1;
+}
+
+.confirmBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: rgba(239,68,68,0.2);
+  border: none;
+  border-radius: 4px;
+  color: var(--danger);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.confirmBtn:hover {
+  background: var(--danger);
+  color: white;
+}
+
+.cancelBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-hover);
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.cancelBtn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+/* ── Chat Folders ── */
+.folderContainer {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2px;
+}
+
+.folderHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  color: var(--text-secondary);
+  margin: 1px 0;
+}
+
+.folderHeader:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+}
+
+.folderHeader:hover .folderActions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.folderChevron {
+  opacity: 0.5;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.folderIcon {
+  color: var(--text-muted);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.folderName {
+  font-size: 0.78rem;
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folderActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+}
+
+.folderContent {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 12px;
+  padding-left: 6px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.08);
+  margin-bottom: 4px;
+}
+
+.emptyFolderHint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 10px;
+}
+
+/* ── Documents Section (Collapsible) ── */
+.docSection {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 180px;
+  padding: 8px 10px 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.collapseChevron {
+  opacity: 0.4;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.collapsed {
+  transform: rotate(-90deg);
+}
+
+.docList {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 2px;
+}
+
+.manageDocsBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  margin-top: 4px;
+}
+
+.manageDocsBtn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+  border-color: var(--accent-bright);
+}
+
+/* ── Footer / User ── */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-color);
+  margin-top: auto;
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--grad-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.pinnedIcon {
+  color: var(--accent-bright);
+  flex-shrink: 0;
+}
+
+.chatName {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.username {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logoutBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+}
+.logoutBtn:hover {
+  background: rgba(239,68,68,0.12);
+  color: var(--danger);
+}

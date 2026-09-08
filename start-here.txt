@@ -2,38 +2,37 @@
               StarkLLM First-Run Guide            
 ==================================================
 
-PREREQUISITES:
-1. Docker Desktop must be installed and running.
-   Download: https://www.docker.com/products/docker-desktop/
-2. Ollama must be running with required models pulled:
-   - ollama pull qwen3.6:27b
-   - ollama pull qwen3-embedding:0.6b
-
---------------------------------------------------
-QUICK START INSTRUCTIONS:
+OFFICIAL START ORDER:
 --------------------------------------------------
 
-1. Extract the ZIP archive completely to a folder on your computer.
+1. Start Docker Desktop
+   Ensure Docker Desktop is running in your system tray.
 
-2. Primary Launcher (Recommended):
-   - Double-click 'start.exe' to launch StarkLLM automatically.
+2. Install Ollama and pull the required models:
+   ollama pull qwen3.6:27b
+   ollama pull qwen3-embedding:0.6b
 
-3. Alternative Terminal Launch:
-   - Click the address bar in File Explorer while inside the extracted folder.
-   - Type 'cmd' and press Enter to open a Command Prompt in this folder.
-   - Run: start.cmd
+3. Download the ZIP and extract it
+   Extract the archive completely to a folder (e.g. C:\StarkLLM\).
 
-4. If Windows SmartScreen or ExecutionPolicy blocks scripts:
-   - Open PowerShell or Command Prompt in this extracted folder.
-   - Run: powershell -ExecutionPolicy Bypass -File unblock.ps1
-     (Note: This safely unblocks only the extracted files inside this StarkLLM folder.)
-   - Run: start.exe (or start.cmd)
+4. Open terminal in the extracted folder:
+   Click the address bar in File Explorer, type 'cmd', and press Enter.
 
-5. Access StarkLLM:
-   - Once containers are up, open http://localhost:5173 in your browser.
+5. Run the launcher:
+   Run: start.exe
+   If Windows SmartScreen warns: click "More info" -> "Run anyway"
 
---------------------------------------------------
-BACKUP UNBLOCK METHOD:
---------------------------------------------------
-If PowerShell scripts are completely disabled on your system:
-- Right-click 'start.cmd' or 'start.bat' -> Properties -> Check 'Unblock' at the bottom -> Click OK.
+   Fallback launcher: start.cmd
+   Last resort: docker compose up --build -d
+
+   (Optional unblock script if scripts are restricted:
+    powershell -ExecutionPolicy Bypass -File unblock.ps1)
+
+6. Open StarkLLM:
+   Navigate to http://localhost:5173 in your browser.
+
+==================================================
+ADVANCED / BACKUP WORKAROUND:
+==================================================
+- 'start.bat' is available as an advanced batch launcher.
+- To unblock files manually: right-click 'start.cmd' or 'start.bat' -> Properties -> Check 'Unblock' -> Click OK.

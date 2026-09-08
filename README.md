@@ -41,26 +41,22 @@ To run StarkLLM smoothly, you need:
 
 ## Starting and Stopping StarkLLM
 
-### First-Run Instructions & Windows SmartScreen Path
+### Official First-Run Sequence
 
-Windows attaches a *Mark of the Web (MOTW)* security flag to ZIP archive contents downloaded from the internet. Follow these steps in order:
-
-1. **Extract the ZIP archive** completely to a folder (e.g., `C:\StarkLLM\`).
-2. **Primary Launcher**: Double-click **`start.exe`** inside the extracted folder.
-3. **Terminal Alternative**:
-   - Open File Explorer in the extracted folder, click the address bar, type `cmd`, and press **Enter**.
-   - Run: `start.cmd`
-4. **If Windows blocks script execution**:
-   - Open PowerShell or CMD in the extracted folder and run:
-     ```powershell
-     powershell -ExecutionPolicy Bypass -File unblock.ps1
-     ```
-     *(Note: This unblocks files strictly inside the local StarkLLM folder without changing global system policy.)*
-   - Then run `start.exe` or `start.cmd`.
-5. **Backup Unblock Method**:
-   - Right-click `start.cmd` (or `start.bat`) → **Properties** → tick **Unblock** at the bottom → **Apply** → **OK**.
-
-> **Requirements before starting:** Docker Desktop must be running in the system tray, and Ollama must be running with the default models pulled (`ollama pull qwen3.6:27b && ollama pull qwen3-embedding:0.6b`). Access the web UI at `http://localhost:5173`.
+1. **Start Docker Desktop**: Ensure Docker Desktop is installed and running in your system tray.
+2. **Install Ollama & pull models**:
+   ```bash
+   ollama pull qwen3.6:27b
+   ollama pull qwen3-embedding:0.6b
+   ```
+3. **Download & Extract ZIP**: Extract the package completely to a folder (e.g. `C:\StarkLLM\`).
+4. **Open Terminal in folder**: In File Explorer inside the extracted folder, click the address bar, type `cmd`, and press **Enter**.
+5. **Run Launcher**:
+   - Primary: Run `start.exe`. If Windows SmartScreen displays a warning, click **More info** → **Run anyway**.
+   - Fallback: Run `start.cmd`
+   - Last resort: `docker compose up --build -d`
+   *(Optional unblock helper if scripts are restricted: `powershell -ExecutionPolicy Bypass -File unblock.ps1`)*
+6. **Open StarkLLM**: Navigate to `http://localhost:5173` in your browser.
 
 ---
 

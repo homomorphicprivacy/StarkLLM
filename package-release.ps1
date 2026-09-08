@@ -39,6 +39,7 @@ $ItemsToCopy = @(
     "README.md",
     "RELEASE_CHECKLIST.md",
     "PACKAGING.md",
+    ".env",
     ".env.example"
 )
 
@@ -88,7 +89,8 @@ Get-ChildItem -Path $OutputDir -Recurse -Directory | Where-Object {
 } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "Creating ZIP archive: $ZipPath..."
-Compress-Archive -Path "$OutputDir\*" -DestinationPath $ZipPath -Force
+$filesToZip = (Get-ChildItem -Path $OutputDir -Force).FullName
+Compress-Archive -Path $filesToZip -DestinationPath $ZipPath -Force
 
 $WebsiteDownloadsDir = Join-Path $PSScriptRoot "website\downloads"
 if (Test-Path $WebsiteDownloadsDir) {

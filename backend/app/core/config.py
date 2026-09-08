@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     KB_DATA_DIR: str = "/kb_data"
     
     # Auth
-    SECRET_KEY: str
+    SECRET_KEY: str = "starkllm_research_beta_secure_fallback_key_2026_change_in_production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
     
     # Database

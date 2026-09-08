@@ -17,7 +17,7 @@ services:
       - HF_HUB_DISABLE_TELEMETRY=1
       - DO_NOT_TRACK=1
       - ANONYMIZED_TELEMETRY=False
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:-starkllm_research_beta_secure_fallback_key_2026_change_in_production}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     deploy:

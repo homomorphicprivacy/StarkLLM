@@ -20,8 +20,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('workspaces', sa.Column('active_kb_dir_ids', sa.String(), nullable=True))
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    tables = insp.get_table_names()
+    if 'workspaces' in tables:
+        cols = [c['name'] for c in insp.get_columns('workspaces')]
+        if 'active_kb_dir_ids' not in cols:
+            op.add_column('workspaces', sa.Column('active_kb_dir_ids', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column('workspaces', 'active_kb_dir_ids')
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    tables = insp.get_table_names()
+    if 'workspaces' in tables:
+        cols = [c['name'] for c in insp.get_columns('workspaces')]
+        if 'active_kb_dir_ids' in cols:
+            op.drop_column('workspaces', 'active_kb_dir_ids')

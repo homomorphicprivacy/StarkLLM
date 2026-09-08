@@ -32,12 +32,30 @@ export default function LoginSignup({ onLoginSuccess }) {
         });
       }
 
+      const parseResponse = async (res) => {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          return await res.json();
+        }
+        const text = await res.text();
+        if (res.status === 502 || res.status === 504) {
+          throw new Error('Backend service unavailable (HTTP 502). Please ensure the backend container is running.');
+        }
+        throw new Error(`Server returned unexpected response (HTTP ${res.status}): ${text.slice(0, 120)}`);
+      };
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Authentication failed');
+        let errorMsg = 'Authentication failed';
+        try {
+          const errorData = await parseResponse(response);
+          errorMsg = errorData.detail || errorMsg;
+        } catch (parseErr) {
+          errorMsg = parseErr.message || errorMsg;
+        }
+        throw new Error(errorMsg);
       }
 
-      const data = await response.json();
+      const data = await parseResponse(response);
 
       if (isLogin) {
         onLoginSuccess(data.access_token);
@@ -51,12 +69,15 @@ export default function LoginSignup({ onLoginSuccess }) {
           body: formData.toString()
         });
         if (loginResponse.ok) {
-          const loginData = await loginResponse.json();
+          const loginData = await parseResponse(loginResponse);
           onLoginSuccess(loginData.access_token);
+        } else {
+          setError('Account created successfully! Please log in above.');
+          setIsLogin(true);
         }
       }
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }

@@ -26,4 +26,4 @@ COPY alembic/ ./alembic/
 
 # Run Alembic migrations then start the server.
 # `mkdir -p data` ensures the DB directory exists even on a fresh volume.
-CMD ["sh", "-c", "mkdir -p data && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "mkdir -p data && python -c 'from app.db.session import engine, Base; import app.db.models; Base.metadata.create_all(bind=engine)' && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

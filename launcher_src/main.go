@@ -69,8 +69,20 @@ func main() {
 		pauseAndExit(1)
 	}
 
-	fmt.Println("[4/4] Opening StarkLLM Dashboard (http://localhost:5173)...")
-	time.Sleep(2 * time.Second)
+	fmt.Println()
+	fmt.Println("[4/4] Waiting for backend to be ready...")
+	fmt.Println("      (First run can take 1-2 minutes while the backend initialises)")
+	fmt.Println()
+
+	if waitForBackend("http://localhost:8000/health", 90) {
+		fmt.Println("  -> Backend is ready!")
+	} else {
+		fmt.Println("  [WARNING] Backend did not respond within 90 seconds.")
+		fmt.Println("            Opening browser anyway — it may still be starting up.")
+	}
+
+	fmt.Println()
+	fmt.Println("Opening StarkLLM Dashboard (http://localhost:5173)...")
 	openBrowser("http://localhost:5173")
 
 	fmt.Println()
@@ -79,6 +91,24 @@ func main() {
 	fmt.Println("==================================================")
 	fmt.Println()
 	pauseAndExit(0)
+}
+
+// waitForBackend polls the given health URL every second for up to maxSeconds.
+// Returns true if it became healthy, false if the timeout was reached.
+func waitForBackend(url string, maxSeconds int) bool {
+	client := http.Client{Timeout: 2 * time.Second}
+	for i := 1; i <= maxSeconds; i++ {
+		resp, err := client.Get(url)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				return true
+			}
+		}
+		fmt.Printf("  Waiting for backend... [%d/%d]\n", i, maxSeconds)
+		time.Sleep(1 * time.Second)
+	}
+	return false
 }
 
 func checkOllama() bool {

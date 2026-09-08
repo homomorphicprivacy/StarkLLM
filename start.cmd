@@ -26,8 +26,31 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 echo.
-echo  [3/4] Waiting for services to initialise...
-timeout /t 4 >nul
+echo  [3/4] Waiting for backend to be ready...
+echo  (This can take 1-2 minutes on first run while the backend initialises)
+echo.
+set HEALTH_URL=http://localhost:8000/health
+set MAX_TRIES=90
+set TRY=0
+
+:poll_loop
+set /a TRY+=1
+if %TRY% GTR %MAX_TRIES% (
+    echo.
+    echo  [WARNING] Backend did not respond within 90 seconds.
+    echo  It may still be starting. Opening browser anyway...
+    goto open_browser
+)
+curl.exe -sf --max-time 2 %HEALTH_URL% >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo  Backend is ready! (attempt %TRY%)
+    goto open_browser
+)
+echo  Waiting for backend... [%TRY%/%MAX_TRIES%]
+timeout /t 1 /nobreak >nul
+goto poll_loop
+
+:open_browser
 echo.
 echo  [4/4] Opening StarkLLM in your browser...
 start http://localhost:5173

@@ -27,7 +27,7 @@ To run StarkLLM smoothly, you need:
 3. **Open your Terminal** (Command Prompt or PowerShell) and pull the required models:
    ```bash
    # Core text generation model
-   ollama pull qwen3.6:27b
+   ollama pull qwen3.8:27b
 
    # Document embedding model (Required for RAG)
    ollama pull qwen3-embedding:0.6b
@@ -46,7 +46,7 @@ To run StarkLLM smoothly, you need:
 1. **Start Docker Desktop**: Ensure Docker Desktop is installed and running in your system tray.
 2. **Install Ollama & pull models**:
    ```bash
-   ollama pull qwen3.6:27b
+   ollama pull qwen3.8:27b
    ollama pull qwen3-embedding:0.6b
    ```
 3. **Download & Extract ZIP**: Extract the package completely to a folder (e.g. `C:\StarkLLM\`).

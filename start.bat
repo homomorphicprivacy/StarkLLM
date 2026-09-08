@@ -16,7 +16,7 @@ echo  3.  Exit
 echo.
 echo ============================================
 echo  Requires: Docker Desktop + Ollama running
-echo  Default model: qwen3.6:27b
+echo  Default model: qwen3.8:27b
 echo ============================================
 echo.
 set "choice="
@@ -37,7 +37,11 @@ echo ============================================
 echo         Starting StarkLLM
 echo ============================================
 echo.
-echo  [1/3] Building and starting containers...
+echo  [1/4] Cleaning previous containers...
+docker rm -f starkllm-backend starkllm-frontend >nul 2>&1
+docker compose down --remove-orphans >nul 2>&1
+echo.
+echo  [2/4] Building and starting containers...
 docker compose up --build -d
 if %ERRORLEVEL% NEQ 0 (
     echo.

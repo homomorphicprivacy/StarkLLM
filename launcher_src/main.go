@@ -50,14 +50,16 @@ func main() {
 		fmt.Println()
 		fmt.Println("[WARNING] Ollama is not running or unreachable on http://localhost:11434.")
 		fmt.Println("          StarkLLM requires Ollama for local LLM inference and embeddings.")
-		fmt.Println("          Prerequisite models: qwen3.6:27b, qwen3-embedding:0.6b")
+		fmt.Println("          Prerequisite models: qwen3.8:27b, qwen3-embedding:0.6b")
 		fmt.Println("          Please ensure Ollama is installed and running.")
 		fmt.Println()
 	} else {
 		fmt.Println("  -> Ollama service detected.")
 	}
 
-	fmt.Println("[3/4] Starting StarkLLM containers (docker compose up --build -d)...")
+	fmt.Println("[3/4] Cleaning previous containers and starting StarkLLM...")
+	_ = exec.Command("docker", "rm", "-f", "starkllm-backend", "starkllm-frontend").Run()
+	_ = exec.Command("docker", "compose", "down", "--remove-orphans").Run()
 	composeCmd := exec.Command("docker", "compose", "up", "--build", "-d")
 	composeCmd.Stdout = os.Stdout
 	composeCmd.Stderr = os.Stderr

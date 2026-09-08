@@ -9,7 +9,7 @@ OFFICIAL START ORDER:
    Ensure Docker Desktop is running in your system tray.
 
 2. Install Ollama and pull the required models:
-   ollama pull qwen3.6:27b
+   ollama pull qwen3.8:27b
    ollama pull qwen3-embedding:0.6b
 
 3. Download the ZIP and extract it

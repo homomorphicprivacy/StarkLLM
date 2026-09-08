@@ -7,11 +7,9 @@ This script creates a clean distribution package. It includes all necessary sour
 scripts, and configuration examples while explicitly excluding personal data, uploaded
 files, local vector databases, and temporary development artifacts (e.g. node_modules).
 #>
-
-$Version = Read-Host -Prompt "Enter release version (e.g., 1.0.0)"
-if ([string]::IsNullOrWhiteSpace($Version)) {
-    $Version = "1.0.0"
-}
+param(
+    [string]$Version = "1.0.0"
+)
 
 $RepoRoot = Split-Path -Path $PSScriptRoot -Parent
 $ReleaseName = "StarkLLM-v$Version-beta"

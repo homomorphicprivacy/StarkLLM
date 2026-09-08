@@ -13,9 +13,10 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = "1.0.0"
 }
 
-$ReleaseName = "StarkLLM-Windows-Research-Beta-v$Version"
+$RepoRoot = Split-Path -Path $PSScriptRoot -Parent
+$ReleaseName = "StarkLLM-v$Version-beta"
 $OutputDir = Join-Path -Path $PSScriptRoot -ChildPath $ReleaseName
-$ZipPath = Join-Path -Path $PSScriptRoot -ChildPath "$ReleaseName.zip"
+$ZipPath = Join-Path $PSScriptRoot "StarkLLM-v$Version-beta.zip"
 
 Write-Host "Creating release package $ReleaseName..." -ForegroundColor Cyan
 
@@ -32,6 +33,8 @@ $ItemsToCopy = @(
     "frontend",
     "docker-compose.yml",
     "start.bat",
+    "start.cmd",
+    "unblock.bat",
     "README.md",
     "RELEASE_CHECKLIST.md",
     "PACKAGING.md",
@@ -85,6 +88,12 @@ Get-ChildItem -Path $OutputDir -Recurse -Directory | Where-Object {
 
 Write-Host "Creating ZIP archive: $ZipPath..."
 Compress-Archive -Path "$OutputDir\*" -DestinationPath $ZipPath -Force
+
+$WebsiteDownloadsDir = Join-Path $PSScriptRoot "website\downloads"
+if (Test-Path $WebsiteDownloadsDir) {
+    Write-Host "Syncing ZIP to website/downloads..."
+    Copy-Item -Path $ZipPath -Destination (Join-Path $WebsiteDownloadsDir "StarkLLM-v1.0.0-beta.zip") -Force
+}
 
 Write-Host "Cleaning up temporary folder..."
 Remove-Item -Recurse -Force $OutputDir

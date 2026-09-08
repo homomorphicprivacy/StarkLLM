@@ -24,6 +24,8 @@ The release zip **must include** these files and directories:
 - `frontend/` (source code)
 - `docker-compose.yml`
 - `start.bat`
+- `start.cmd`
+- `unblock.bat`
 - `README.md`
 - `RELEASE_CHECKLIST.md`
 - `PACKAGING.md`

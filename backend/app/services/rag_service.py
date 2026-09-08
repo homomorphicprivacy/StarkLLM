@@ -683,7 +683,7 @@ class RAGService :
             return [query ]
 
         prompt =(
-        "You are an AI assistant designed to optimize search queries for a vector database retrieval system. "
+        "You are a search query optimizer for a vector database retrieval system. "
         "Given the user's input search query, generate exactly 1 or 2 alternative, more specific, "
         "or expanded versions of this query. "
         "The rewritten queries should focus on key concepts, synonyms, and specific search terms that "

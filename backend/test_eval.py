@@ -61,7 +61,7 @@ def run_evaluation():
             
         # 2. Generate Answer
         system_prompt = (
-            "You are an AI assistant. Answer the user's question based strictly on the provided context.\n\n"
+            "You are a document question-answering system. Answer the user's question based strictly on the provided context.\n\n"
             f"Context:\n{chr(10).join(contexts)}"
         )
         messages = [

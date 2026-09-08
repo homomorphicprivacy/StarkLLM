@@ -27,10 +27,10 @@ To run StarkLLM smoothly, you need:
 3. **Open your Terminal** (Command Prompt or PowerShell) and pull the required models:
    ```bash
    # Core text generation model
-   ollama pull qwen3.8:27b
+   ollama pull qwen3.6:27b
 
    # Document embedding model (Required for RAG)
-   ollama pull nomic-embed-text
+   ollama pull qwen3-embedding:0.6b
 
    # Vision model (if utilizing image uploads)
    ollama pull llava
@@ -41,13 +41,28 @@ To run StarkLLM smoothly, you need:
 
 ## Starting and Stopping StarkLLM
 
-We provide a simple menu-driven launcher for Windows users:
+### First-Run: Windows SmartScreen Unblock
 
-1. Double-click **`start.bat`** in the project folder.
+Windows marks files downloaded from the internet with a security flag that blocks `.bat` files on first double-click. **This affects every user who downloads the ZIP.** There are three ways to fix it:
+
+**Option A — One-click fix (recommended for most users)**  
+Double-click **`unblock.bat`**. It strips the security mark from every extracted file and then launches StarkLLM automatically. No policy changes are required.
+
+**Option B — Manual unblock**  
+Right-click **`start.bat`** → **Properties** → tick **Unblock** → click **Apply** → run `start.bat` normally.
+
+**Option C — Alternative launcher**  
+Double-click **`start.cmd`** instead. Some Windows environments allow `.cmd` files even when `.bat` files are blocked.
+
+### Running StarkLLM
+
+1. Double-click **`start.bat`** (or `start.cmd`) in the extracted folder.
 2. The control panel will appear with three options:
    - **`1. Start StarkLLM`**: Builds the Docker containers and automatically opens `http://localhost:5173` in your browser.
    - **`2. Stop StarkLLM`**: Safely stops and shuts down the containers.
    - **`3. Exit`**: Closes the launcher.
+
+> **Requirements before starting:** Docker Desktop must be running in the system tray, and Ollama must be running with the default model pulled (`qwen3.6:27b`).
 
 ---
 

@@ -1,0 +1,39 @@
+==================================================
+              StarkLLM First-Run Guide            
+==================================================
+
+PREREQUISITES:
+1. Docker Desktop must be installed and running.
+   Download: https://www.docker.com/products/docker-desktop/
+2. Ollama must be running with required models pulled:
+   - ollama pull qwen3.6:27b
+   - ollama pull qwen3-embedding:0.6b
+
+--------------------------------------------------
+QUICK START INSTRUCTIONS:
+--------------------------------------------------
+
+1. Extract the ZIP archive completely to a folder on your computer.
+
+2. Primary Launcher (Recommended):
+   - Double-click 'start.exe' to launch StarkLLM automatically.
+
+3. Alternative Terminal Launch:
+   - Click the address bar in File Explorer while inside the extracted folder.
+   - Type 'cmd' and press Enter to open a Command Prompt in this folder.
+   - Run: start.cmd
+
+4. If Windows SmartScreen or ExecutionPolicy blocks scripts:
+   - Open PowerShell or Command Prompt in this extracted folder.
+   - Run: powershell -ExecutionPolicy Bypass -File unblock.ps1
+     (Note: This safely unblocks only the extracted files inside this StarkLLM folder.)
+   - Run: start.exe (or start.cmd)
+
+5. Access StarkLLM:
+   - Once containers are up, open http://localhost:5173 in your browser.
+
+--------------------------------------------------
+BACKUP UNBLOCK METHOD:
+--------------------------------------------------
+If PowerShell scripts are completely disabled on your system:
+- Right-click 'start.cmd' or 'start.bat' -> Properties -> Check 'Unblock' at the bottom -> Click OK.

@@ -41,28 +41,26 @@ To run StarkLLM smoothly, you need:
 
 ## Starting and Stopping StarkLLM
 
-### First-Run: Windows SmartScreen Unblock
+### First-Run Instructions & Windows SmartScreen Path
 
-Windows marks files downloaded from the internet with a security flag that blocks `.bat` files on first double-click. **This affects every user who downloads the ZIP.** There are three ways to fix it:
+Windows attaches a *Mark of the Web (MOTW)* security flag to ZIP archive contents downloaded from the internet. Follow these steps in order:
 
-**Option A — One-click fix (recommended for most users)**  
-Double-click **`unblock.bat`**. It strips the security mark from every extracted file and then launches StarkLLM automatically. No policy changes are required.
+1. **Extract the ZIP archive** completely to a folder (e.g., `C:\StarkLLM\`).
+2. **Primary Launcher**: Double-click **`start.exe`** inside the extracted folder.
+3. **Terminal Alternative**:
+   - Open File Explorer in the extracted folder, click the address bar, type `cmd`, and press **Enter**.
+   - Run: `start.cmd`
+4. **If Windows blocks script execution**:
+   - Open PowerShell or CMD in the extracted folder and run:
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File unblock.ps1
+     ```
+     *(Note: This unblocks files strictly inside the local StarkLLM folder without changing global system policy.)*
+   - Then run `start.exe` or `start.cmd`.
+5. **Backup Unblock Method**:
+   - Right-click `start.cmd` (or `start.bat`) → **Properties** → tick **Unblock** at the bottom → **Apply** → **OK**.
 
-**Option B — Manual unblock**  
-Right-click **`start.bat`** → **Properties** → tick **Unblock** → click **Apply** → run `start.bat` normally.
-
-**Option C — Alternative launcher**  
-Double-click **`start.cmd`** instead. Some Windows environments allow `.cmd` files even when `.bat` files are blocked.
-
-### Running StarkLLM
-
-1. Double-click **`start.bat`** (or `start.cmd`) in the extracted folder.
-2. The control panel will appear with three options:
-   - **`1. Start StarkLLM`**: Builds the Docker containers and automatically opens `http://localhost:5173` in your browser.
-   - **`2. Stop StarkLLM`**: Safely stops and shuts down the containers.
-   - **`3. Exit`**: Closes the launcher.
-
-> **Requirements before starting:** Docker Desktop must be running in the system tray, and Ollama must be running with the default model pulled (`qwen3.6:27b`).
+> **Requirements before starting:** Docker Desktop must be running in the system tray, and Ollama must be running with the default models pulled (`ollama pull qwen3.6:27b && ollama pull qwen3-embedding:0.6b`). Access the web UI at `http://localhost:5173`.
 
 ---
 

@@ -1,5 +1,8 @@
 # StarkLLM (Research Beta)
 
+**Version:** StarkLLM v1.0.0-beta  
+**Snapshot Date:** 2026-09-09
+
 **StarkLLM** is a private, local-first AI assistant designed for developers and technical users. It is **completely free** and **open source**, intended for research and non-commercial use. It features an integrated Retrieval-Augmented Generation (RAG) engine, allowing you to chat with your local documents, organize workflows into Workspaces, and maintain a global Knowledge Base—all running entirely on your own hardware. 
 
 By leveraging Docker and Ollama, StarkLLM keeps your data completely secure. Your files and chats never leave your machine.

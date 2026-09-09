@@ -37,6 +37,7 @@ $ItemsToCopy = @(
     "unblock.ps1",
     "start-here.txt",
     "README.md",
+    "RELEASE_NOTES.md",
     "RELEASE_CHECKLIST.md",
     "PACKAGING.md",
     ".env",

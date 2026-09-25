@@ -17,12 +17,14 @@ This is an official frozen research-beta snapshot of StarkLLM, designed for loca
 - **Clean Docker Startup**: Automatic database initialization on clean volume creation without Alembic schema collision.
 - **Pre-Configured Environment**: Ready-to-run `.env` shipped directly in the distribution archive with secure research defaults.
 - **Default Models**:
-  - Chat / Completion: `qwen2.5:7b` (or `qwen2.5:3b` for lightweight setups)
-  - Document Embeddings: `nomic-embed-text`
+  - Chat / Completion: `qwen3.8:27b` (shipped `.env` default; `qwen2.5:7b` / `3b` for lightweight setups)
+  - Document Embeddings: `qwen3-embedding:0.6b` (shipped `.env` default; `nomic-embed-text` alternative)
   - Vision (optional): `llava`
-- **Robust Launchers**:
-  - `start.exe`, `start.cmd`, and `start.bat` perform automated container cleanup before launch to prevent naming conflicts.
-  - Launchers poll backend `/api/system/health` before launching the browser to eliminate HTTP 502 Bad Gateway race conditions.
+- **Robust Launchers (Phase 1 Hardened)**:
+  - `start.exe`, `start.cmd`, and `start.bat` perform automated container cleanup before launch to prevent naming and port conflicts.
+  - Preflight checks verify Docker Desktop engine status, WSL2 kernel availability, Ollama reachable on host, required local models, and free local ports (8000/5173).
+  - Generates `preflight_report.txt` for instant diagnostic and support triage.
+  - Launchers poll backend `/health` before launching the browser to eliminate HTTP 502 Bad Gateway race conditions.
 - **Onboarding Wizard Resilience**: Exponential backoff and automated retry handling during backend container initialization.
 - **Verified Packaging**: Complete standalone distribution ZIP with all frontend/backend source assets, launchers, and offline TTS models included.
 

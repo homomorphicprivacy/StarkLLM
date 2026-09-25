@@ -29,17 +29,16 @@ To run StarkLLM smoothly, you need:
 Before launching StarkLLM, open PowerShell or Command Prompt and pull the recommended local models:
 
 ```bash
-# Recommended default text generation model (7B)
-ollama pull qwen2.5:7b
-
-# Document embedding model (Required for RAG)
-ollama pull nomic-embed-text
+# Shipped default models (configured in .env and docker-compose.yml)
+ollama pull qwen3.8:27b
+ollama pull qwen3-embedding:0.6b
 ```
 
-*Optional alternative models:*
-- Lightweight / 8GB RAM laptops: `ollama pull qwen2.5:3b`
-- High-capacity / 16GB+ VRAM power users: `ollama pull qwen2.5:14b`
-- Multimodal / Vision models: `ollama pull llava`
+*Hardware tiers & alternatives:*
+- **Standard / Power users (16GB+ System RAM / 8GB+ VRAM):** `qwen3.8:27b` + `qwen3-embedding:0.6b` (shipped default)
+- **Mid-tier / 8GB VRAM:** `ollama pull qwen2.5:7b` + `ollama pull nomic-embed-text`
+- **Lightweight / 8GB RAM laptops:** `ollama pull qwen2.5:3b` + `ollama pull nomic-embed-text`
+- **Multimodal / Vision:** `ollama pull llava`
 
 ---
 

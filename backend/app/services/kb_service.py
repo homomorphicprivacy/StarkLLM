@@ -467,8 +467,8 @@ class KBService:
 
         file_path = doc.file_path
         file_type = doc.file_type.lower()
-        extracted_text = ""
 
+        try:
             # 1. Content Extraction & Chunking with Honest Locators
             chunks = []
             metadatas = []
@@ -509,7 +509,7 @@ class KBService:
                             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                                 temp_path = tmp.name
                             pix.save(temp_path)
-                            
+
                             pdf_vision_prompt = (
                                 "This is a scanned page from a PDF document. "
                                 "Please extract the content carefully, paying special attention "
@@ -614,7 +614,7 @@ class KBService:
 
             # 2. Vector Database Sync (ChromaDB)
             collection = rag_service.get_or_create_kb_collection(folder.user_id)
-            
+
             # Delete any existing chunks for this specific document_id
             try:
                 collection.delete(where={"document_id": document_id})
@@ -654,6 +654,7 @@ class KBService:
                 error_message=str(e)
             )
             return False
+
 
     def index_pending_documents(self, db: Session, folder_id: int = None) -> list[int]:
         """
@@ -702,61 +703,121 @@ class KBService:
         return snapshot
 
     def _watcher_loop(self):
-        logger.info("KB: Background folder sync watcher started.")
+        """
+        Background mtime-polling watcher for registered KB folders.
+
+        Implementation notes (honest):
+        - Uses os.walk + os.path.getmtime — NOT a kernel filesystem watcher
+          (inotify / ReadDirectoryChangesW). This means:
+          * Changes are detected within KB_AUTO_SYNC_INTERVAL_SECONDS (default 30s),
+            not instantly.
+          * On Windows/Docker bind-mounts (NTFS→WSL2→container), mtime is reliably
+            propagated to the container as long as the folder path stored in the DB
+            is the *container-visible* path (e.g. /kb_data/...), not the host
+            Windows path (e.g. C:\\Users\\...). If the user registers a Windows path
+            that is not bind-mounted into the container, os.path.exists() will
+            return False and the folder is silently skipped.
+        - Debounce: after first change detection, waits KB_SYNC_DEBOUNCE_SECONDS
+          before triggering sync. The loop sleeps in 1s ticks so debounce is
+          honored even when the poll interval is much longer.
+        - Overlap safety: sync_folder() uses _acquire_sync_lock(); concurrent
+          syncs for the same folder are skipped.
+        """
+        logger.info("KB: Background folder sync watcher started (mtime polling).")
         while not self._stop_event.is_set():
             try:
-                interval = getattr(settings, "KB_AUTO_SYNC_INTERVAL_SECONDS", 30)
-                debounce_window = getattr(settings, "KB_SYNC_DEBOUNCE_SECONDS", 3)
+                interval = max(5, getattr(settings, "KB_AUTO_SYNC_INTERVAL_SECONDS", 30))
+                debounce_window = max(1, getattr(settings, "KB_SYNC_DEBOUNCE_SECONDS", 3))
 
-                for _ in range(max(1, interval)):
+                # Sleep in 1s ticks so we can react to debounce expiry promptly
+                # and shut down cleanly without a long join delay.
+                for _ in range(interval):
                     if self._stop_event.is_set():
                         break
+
+                    # Check if any pending debounce has expired
+                    now = time.time()
+                    expired = [
+                        fid for fid, t in list(self._last_change_detected.items())
+                        if now - t >= debounce_window
+                    ]
+                    for folder_id in expired:
+                        self._last_change_detected.pop(folder_id, None)
+                        logger.info(
+                            f"KB Watcher: Debounce expired for folder ID {folder_id}. "
+                            "Triggering auto-sync."
+                        )
+                        try:
+                            from app.db.session import SessionLocal
+                            with SessionLocal() as db:
+                                self.sync_folder(db, folder_id)
+                                # Refresh snapshot after sync
+                                folder = db.query(KnowledgeBaseFolder).filter(
+                                    KnowledgeBaseFolder.id == folder_id
+                                ).first()
+                                if folder and os.path.exists(folder.folder_path):
+                                    self._folder_snapshots[folder_id] = self._take_folder_snapshot(
+                                        folder.folder_path
+                                    )
+                        except Exception as sync_err:
+                            logger.error(
+                                f"KB Watcher: Auto-sync failed for folder ID {folder_id}: {sync_err}",
+                                exc_info=True
+                            )
+
                     time.sleep(1)
 
                 if self._stop_event.is_set():
                     break
 
-                from app.db.session import SessionLocal
-                with SessionLocal() as db:
-                    folders = db.query(KnowledgeBaseFolder).filter(KnowledgeBaseFolder.is_active == 1).all()
-                    for folder in folders:
-                        if self._stop_event.is_set():
-                            break
-                        folder_id = folder.id
-                        folder_path = folder.folder_path
-                        if not os.path.exists(folder_path):
-                            continue
+                # Full poll: compare snapshots for all active folders
+                try:
+                    from app.db.session import SessionLocal
+                    with SessionLocal() as db:
+                        folders = db.query(KnowledgeBaseFolder).filter(
+                            KnowledgeBaseFolder.is_active == 1
+                        ).all()
+                        for folder in folders:
+                            if self._stop_event.is_set():
+                                break
+                            folder_id = folder.id
+                            folder_path = folder.folder_path
 
-                        current_snap = self._take_folder_snapshot(folder_path)
-                        prev_snap = self._folder_snapshots.get(folder_id)
+                            if not os.path.exists(folder_path):
+                                # Path not visible from container — log once at debug level.
+                                logger.debug(
+                                    f"KB Watcher: folder ID {folder_id} path '{folder_path}' "
+                                    "not accessible from container. Skipping."
+                                )
+                                continue
 
-                        if prev_snap is None:
-                            self._folder_snapshots[folder_id] = current_snap
-                            continue
+                            current_snap = self._take_folder_snapshot(folder_path)
+                            prev_snap = self._folder_snapshots.get(folder_id)
 
-                        has_changes = (current_snap != prev_snap)
-                        now = time.time()
-
-                        if has_changes:
-                            last_chg = self._last_change_detected.get(folder_id, 0)
-                            if last_chg == 0:
-                                self._last_change_detected[folder_id] = now
-                                logger.info(f"KB Watcher: Change detected in folder ID {folder_id}. Debouncing for {debounce_window}s...")
-                            elif now - last_chg >= debounce_window:
-                                logger.info(f"KB Watcher: Debounce window passed for folder ID {folder_id}. Triggering auto-sync.")
-                                self._last_change_detected.pop(folder_id, None)
+                            if prev_snap is None:
+                                # First observation — record baseline, do not trigger sync.
                                 self._folder_snapshots[folder_id] = current_snap
-                                self.sync_folder(db, folder_id)
-                        else:
-                            if folder_id in self._last_change_detected:
-                                self._last_change_detected.pop(folder_id, None)
+                                continue
+
+                            has_changes = (current_snap != prev_snap)
+                            if has_changes and folder_id not in self._last_change_detected:
+                                self._last_change_detected[folder_id] = time.time()
+                                logger.info(
+                                    f"KB Watcher: Change detected in folder ID {folder_id} "
+                                    f"('{folder_path}'). Will sync after {debounce_window}s debounce."
+                                )
+                            elif not has_changes and folder_id not in self._last_change_detected:
+                                # Stable — keep snapshot current.
                                 self._folder_snapshots[folder_id] = current_snap
+                except Exception as poll_err:
+                    logger.error(f"KB Watcher: Poll error: {poll_err}", exc_info=True)
 
             except Exception as e:
                 logger.error(f"KB Watcher loop encountered error: {e}", exc_info=True)
                 time.sleep(5)
 
         logger.info("KB: Background folder sync watcher stopped.")
+
 
     def start_background_watcher(self):
         if self._watcher_thread and self._watcher_thread.is_alive():

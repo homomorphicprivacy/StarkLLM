@@ -19,13 +19,15 @@
 - Source headers in the UI now display `filename (Page 4)` instead of bare filenames.
 - WS and KB source labels are delimited with `|` (not `,`) in HTTP headers to avoid ambiguity with locator text that may itself contain commas.
 
-### B. Global Knowledge Base — live folder watcher
+### B. Global Knowledge Base — interval-poll folder sync
 
 - `KBService` gains a background daemon thread (`KB-Folder-Sync-Watcher`) that polls active folders every `KB_AUTO_SYNC_INTERVAL_SECONDS` (default **30 s**, env-tunable).
-- File-system changes are debounced for `KB_SYNC_DEBOUNCE_SECONDS` (default **3 s**) before triggering `sync_folder()`.
-- Thread uses the existing `_acquire_sync_lock()` guard — concurrent syncs on the same folder are blocked.
+- **Detection mechanism**: `os.walk` + `os.path.getmtime` — **not** a kernel filesystem watcher (inotify / ReadDirectoryChangesW). Changes are detected within the poll interval, not instantly.
+- **Docker bind-mount constraint**: the folder path stored in the DB must be the *container-visible* path (e.g. `/kb_data/subfolder`), not a Windows host path (`C:\...`). Windows host paths are not reachable from inside the Docker container and will be silently skipped by the watcher (logged at DEBUG level). The `/kb_data` volume is bound to `./knowledge_base_data/` in the project root.
+- File-system changes are debounced for `KB_SYNC_DEBOUNCE_SECONDS` (default **3 s**) before triggering `sync_folder()`. The loop sleeps in 1 s ticks and evaluates pending debounces on every tick — so a change is picked up within ≈ debounce_window seconds after detection, not only at the next full poll boundary.
+- Overlap-safe via existing `_acquire_sync_lock()` — if a sync is in flight, the duplicate trigger is dropped.
 - Thread starts on FastAPI `startup` and stops cleanly on `shutdown` (max 3 s join).
-- No dependencies added: uses stdlib `threading`, `os.walk`, `os.path.getmtime`.
+- No new dependencies: stdlib `threading`, `os.walk`, `os.path.getmtime`.
 
 ---
 

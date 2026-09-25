@@ -4,7 +4,7 @@ services:
       context: ./backend
     container_name: starkllm-backend
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/app/data
       - ./knowledge_base_data:/kb_data   # Personal Knowledge Base volume
@@ -33,7 +33,7 @@ services:
       context: ./frontend
     container_name: starkllm-frontend
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     depends_on:
       - backend
 

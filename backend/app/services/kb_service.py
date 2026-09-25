@@ -38,8 +38,11 @@ from app.services.vision_service import vision_service
 
 logger = logging.getLogger(__name__)
 
-# Supported file formats for the second brain feature
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".png", ".jpg", ".jpeg"}
+# Supported file formats for the Knowledge Base indexer.
+# CSV and JSON are intentionally omitted until a meaningful chunking strategy
+# is implemented; they are not claimed in README or UI.
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".png", ".jpg", ".jpeg", ".txt", ".md", ".html"}
+
 
 
 class KBService:
@@ -354,6 +357,11 @@ class KBService:
             if folder:
                 folder.last_indexed_at = datetime.utcnow()
                 db.commit()
+                try:
+                    if os.path.exists(folder.folder_path):
+                        self._folder_snapshots[folder_id] = self._take_folder_snapshot(folder.folder_path)
+                except Exception:
+                    pass
             
             # Calculate failures (recently failed or still pending might mean failure if indexing threw internally but caught it)
             # We'll just report what got indexed successfully.
@@ -606,6 +614,75 @@ class KBService:
                 else:
                     raise ValueError("Vision service returned empty description for the image")
 
+            elif file_type in ["txt", "md"]:
+                logger.info(f"KB: Extracting plain text/Markdown: {file_path}")
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+                text_chunks = rag_service._semantic_chunk_text(text)
+                txt_chunk_count = 0
+                for c in text_chunks:
+                    if c.strip():
+                        txt_chunk_count += 1
+                        chunks.append(c.strip())
+                        metadatas.append({
+                            "source": "knowledge_base",
+                            "user_id": folder.user_id,
+                            "folder_id": doc.folder_id,
+                            "document_id": document_id,
+                            "file_name": doc.file_name,
+                            "file_path": file_path,
+                            "chunk_index": txt_chunk_count,
+                            "locator": f"Chunk {txt_chunk_count}"
+                        })
+                        ids.append(f"kb_doc_{document_id}_{file_prefix}_c{txt_chunk_count}")
+
+            elif file_type == "html":
+                logger.info(f"KB: Extracting HTML: {file_path}")
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    html_content = f.read()
+                from html.parser import HTMLParser as _HP
+
+                class _TextExtractor(_HP):
+                    def __init__(self):
+                        super().__init__()
+                        self._parts = []
+                        self._skip = set()
+
+                    def handle_starttag(self, tag, attrs):
+                        if tag in {"script", "style", "head"}:
+                            self._skip.add(tag)
+
+                    def handle_endtag(self, tag):
+                        self._skip.discard(tag)
+
+                    def handle_data(self, d):
+                        if not self._skip:
+                            self._parts.append(d)
+
+                    def text(self):
+                        return " ".join(" ".join(self._parts).split())
+
+                extractor = _TextExtractor()
+                extractor.feed(html_content)
+                html_text = extractor.text()
+                html_chunks = rag_service._semantic_chunk_text(html_text)
+                html_chunk_count = 0
+                for c in html_chunks:
+                    if c.strip():
+                        html_chunk_count += 1
+                        chunks.append(c.strip())
+                        metadatas.append({
+                            "source": "knowledge_base",
+                            "user_id": folder.user_id,
+                            "folder_id": doc.folder_id,
+                            "document_id": document_id,
+                            "file_name": doc.file_name,
+                            "file_path": file_path,
+                            "chunk_index": html_chunk_count,
+                            "locator": f"Chunk {html_chunk_count}"
+                        })
+                        ids.append(f"kb_doc_{document_id}_{file_prefix}_c{html_chunk_count}")
+
             else:
                 raise ValueError(f"Unsupported file type for indexing: {file_type}")
 
@@ -784,10 +861,11 @@ class KBService:
                             folder_path = folder.folder_path
 
                             if not os.path.exists(folder_path):
-                                # Path not visible from container — log once at debug level.
-                                logger.debug(
+                                # Path not visible from container — log warning with actionable remedy
+                                logger.warning(
                                     f"KB Watcher: folder ID {folder_id} path '{folder_path}' "
-                                    "not accessible from container. Skipping."
+                                    "not accessible from inside container. If this is a Windows path, "
+                                    "use the StarkLLM launcher (start.exe) to mirror it into /kb_data."
                                 )
                                 continue
 
@@ -795,8 +873,17 @@ class KBService:
                             prev_snap = self._folder_snapshots.get(folder_id)
 
                             if prev_snap is None:
-                                # First observation — record baseline, do not trigger sync.
+                                # First observation — record baseline; check for unindexed files on disk
                                 self._folder_snapshots[folder_id] = current_snap
+                                doc_count = db.query(KnowledgeBaseDocument).filter(
+                                    KnowledgeBaseDocument.folder_id == folder_id
+                                ).count()
+                                if len(current_snap) > doc_count:
+                                    self._last_change_detected[folder_id] = time.time()
+                                    logger.info(
+                                        f"KB Watcher: Unindexed files detected in folder ID {folder_id} "
+                                        f"({len(current_snap)} on disk vs {doc_count} in DB). Will sync after {debounce_window}s debounce."
+                                    )
                                 continue
 
                             has_changes = (current_snap != prev_snap)

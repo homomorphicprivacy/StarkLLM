@@ -1,4 +1,4 @@
-﻿# Phase 1.5 — Manual Verification Checklist (Windows)
+# Phase 1.5 — Manual Verification Checklist (Windows)
 
 Branch: `phase-1.5-citations-and-gkb-sync`
 
@@ -70,41 +70,47 @@ Upload two documents and ask a question that retrieves chunks from both.
 
 ---
 
-## Check 4 — KB watcher: auto-sync on file drop (Docker path constraint)
-
-> **Important**: the watcher polls container-visible paths only.
-> The bind-mount in docker-compose.yml is:
->   ./knowledge_base_data:/kb_data
-> To use the watcher, your KB folder must be inside knowledge_base_data/
-> in the project root, and registered with its **container path**
-> (e.g. /kb_data/myfolder), NOT a Windows path.
+## Check 4 — Real Windows folder mapping via launcher (`start.exe`)
 
 **Setup**
-1. Create folder `<project_root>\knowledge_base_data\test_watch\`
-2. In the StarkLLM UI -> Knowledge Base -> Add Folder.
-   Enter path: `/kb_data/test_watch`
-3. Click Sync now — should show 0 documents.
-4. Copy a PDF into `knowledge_base_data\test_watch\` using Windows Explorer.
-5. Wait up to 35 seconds (poll interval 30s + debounce 3s + indexing).
+1. Create a test folder on your Windows host (e.g. `C:\Users\<user>\Documents\test_research`).
+2. Run `start.exe` in terminal.
+2. Run `start.exe --add-folder` in terminal (or press `[A]` in the running launcher).
+3. Select `test_research` in the native Windows folder picker.
+4. `start.exe` runs a one-way copy into `knowledge_base_data\test-research\`, starts background sync (`/MON:1 /MOT:1`), and registers `/kb_data/test-research`.
+5. Drop a PDF, TXT, or MD file into `C:\Users\<user>\Documents\test_research\`.
+6. Wait about one minute (robocopy `/MOT:1` 1-minute idle check + container watcher poll). Changes appear within about one minute — this is interval polling, not a continuous kernel watcher.
 
-**Expected Docker logs** (`docker logs starkllm-backend`):
+**Expected**:
+- File appears in `knowledge_base_data\test-research\`.
+- Docker logs show:
 ```
-KB Watcher: Change detected in folder ID N ('/kb_data/test_watch'). Will sync after 3s debounce.
+KB Watcher: Change detected in folder ID N ('/kb_data/test-research'). Will sync after 3s debounce.
 KB Watcher: Debounce expired for folder ID N. Triggering auto-sync.
 ```
-
-KB folder doc list should show the new file as **indexed**.
-
-**If you register a Windows path** (e.g. C:\Users\...\Documents\papers):
-- Watcher logs at DEBUG: "not accessible from container. Skipping."
-- Auto-sync will NOT fire. Use **Sync now** button manually.
+- In Knowledge Base UI (`http://localhost:5173`), the folder appears with the file status **indexed**.
 
 ---
 
-## Check 5 — Overlap safety: no double-sync
+## Check 5 — Web UI rejects Windows paths with helpful guidance
 
 **Setup**
-1. Drop a large PDF (> 20 pages) into `knowledge_base_data\test_watch\`.
+1. In the StarkLLM UI -> Knowledge Base -> Click **Add Folder** -> **Enter path manually**.
+2. Type a Windows host path, e.g. `C:\Users\chris\Documents`.
+
+**Expected UI response**:
+- The input border turns red.
+- A warning banner appears immediately:
+  `Windows path detected. Paths like C:\Users\... are not visible inside the Docker container... Use the StarkLLM launcher instead...`
+- The **Add Folder** submit button is disabled.
+- Submitting directly via API returns HTTP 422 with a descriptive error message.
+
+---
+
+## Check 6 — Overlap safety: no double-sync
+
+**Setup**
+1. Drop a large file into the mapped folder.
 2. Immediately click **Sync now** in the UI while indexing is in progress.
 
 **Expected Docker log**:
@@ -123,8 +129,9 @@ No duplicate indexing run should start.
 | 1 | PDF page citation | `filename (Page N)` in source chip |
 | 2 | DOCX section citation | `filename (Section: 'X' chunk N)` when heading exists |
 | 3 | Pipe delimiter | `|` in X-WS-Sources header, not `,` inside a label |
-| 4 | KB auto-sync (container path) | File drop detected within ~35s; Docker log shows debounce |
-| 5 | Overlap safety | Second sync skipped with log message |
+| 4 | Windows folder mapping | Selected via `start.exe`, mirrored by robocopy, indexed automatically |
+| 5 | Windows path rejection | UI warns and disables submit; API returns 422 |
+| 6 | Overlap safety | Second sync skipped with log message |
 
 ---
 

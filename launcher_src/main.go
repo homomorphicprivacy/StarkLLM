@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -11,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -52,10 +55,27 @@ func main() {
 	exeDir := filepath.Dir(exePath)
 	_ = os.Chdir(exeDir)
 
+	launcherToken := initLauncherToken(exeDir)
+
 	isPreflightOnly := false
-	for _, arg := range os.Args[1:] {
+	addFolderArg := false
+	var folderPathArg string
+	for i := 0; i < len(os.Args[1:]); i++ {
+		arg := os.Args[1+i]
 		if arg == "--preflight" || arg == "-check" || arg == "--check" || arg == "/check" {
 			isPreflightOnly = true
+		}
+		if arg == "--add-folder" || arg == "-add-folder" || arg == "-a" || arg == "add-folder" {
+			addFolderArg = true
+		}
+		if (arg == "--folder" || arg == "-folder") && 1+i+1 < len(os.Args) {
+			folderPathArg = os.Args[1+i+1]
+			addFolderArg = true
+			i++
+		}
+		if strings.HasPrefix(arg, "--folder=") {
+			folderPathArg = strings.TrimPrefix(arg, "--folder=")
+			addFolderArg = true
 		}
 	}
 
@@ -231,7 +251,8 @@ func main() {
 	fmt.Println("(First launch can take 1-2 minutes while Python environment initializes)")
 	fmt.Println()
 
-	if waitForBackend("http://localhost:8000/health", 90) {
+	backendReady := waitForBackend("http://localhost:8000/health", 90)
+	if backendReady {
 		fmt.Println("  -> Backend is healthy and ready!")
 	} else {
 		fmt.Println("  [WARNING] Backend health poll timed out after 90 seconds.")
@@ -242,13 +263,44 @@ func main() {
 	fmt.Println("Opening StarkLLM Dashboard (http://localhost:5173)...")
 	openBrowser("http://localhost:5173")
 
+	// 8. Knowledge Base sync resume and folder picker (Windows only)
+	if backendReady && runtime.GOOS == "windows" {
+		mappings := loadKBMappings(exeDir)
+		if len(mappings) > 0 {
+			fmt.Printf("  Resuming background sync for %d mapped folder(s)...\n", len(mappings))
+			resumeKBMirrors(mappings)
+		}
+		if addFolderArg {
+			handleKBFolderPicker(exeDir, launcherToken, folderPathArg)
+		}
+	}
+
 	fmt.Println()
 	fmt.Println("==================================================")
 	fmt.Println(" StarkLLM is running at http://localhost:5173")
 	fmt.Println(" Diagnostic report saved: preflight_report.txt")
 	fmt.Println("==================================================")
 	fmt.Println()
-	pauseAndExit(0)
+	fmt.Println("Commands:")
+	fmt.Println("  [A] Add a Windows folder to Knowledge Base")
+	fmt.Println("  [Enter] Exit launcher (containers continue running)")
+	fmt.Println()
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("Enter command [A / Enter to exit]: ")
+		if !scanner.Scan() {
+			break
+		}
+		cmd := strings.TrimSpace(strings.ToLower(scanner.Text()))
+		if cmd == "a" || cmd == "add" {
+			handleKBFolderPicker(exeDir, launcherToken, "")
+			fmt.Println()
+			continue
+		}
+		break
+	}
+	os.Exit(0)
 }
 
 func isPortAvailable(port int) bool {
@@ -404,4 +456,284 @@ func pauseAndExit(code int) {
 	reader := bufio.NewReader(os.Stdin)
 	_, _ = reader.ReadString('\n')
 	os.Exit(code)
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1.5B — KB folder picker, safe one-way copy, mappings persistence
+// ---------------------------------------------------------------------------
+
+// KBMapping represents a mapped Windows folder persisted in kb_mappings.json.
+type KBMapping struct {
+	SourcePath    string `json:"source_path"`
+	Slug          string `json:"slug"`
+	DestPath      string `json:"dest_path"`
+	ContainerPath string `json:"container_path"`
+	FolderName    string `json:"folder_name"`
+	CreatedAt     string `json:"created_at"`
+}
+
+// initLauncherToken retrieves or generates a secure launcher token stored in data/.launcher_token.
+// Does not rotate if a valid token file already exists, preserving tokens across concurrent/subsequent invocations.
+func initLauncherToken(exeDir string) string {
+	tokenPath := filepath.Join(exeDir, "data", ".launcher_token")
+	if data, err := os.ReadFile(tokenPath); err == nil {
+		tok := strings.TrimSpace(string(data))
+		if len(tok) >= 16 {
+			return tok
+		}
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("starkllm_%d", time.Now().UnixNano())
+	}
+	token := hex.EncodeToString(b)
+	_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+	_ = os.WriteFile(tokenPath, []byte(token), 0600)
+	if runtime.GOOS == "windows" {
+		username := os.Getenv("USERNAME")
+		if username != "" {
+			_ = exec.Command("icacls", tokenPath, "/inheritance:r", "/grant:r", username+":(R,W)").Run()
+		}
+	}
+	return token
+}
+
+// loadKBMappings loads saved folder mappings from kb_mappings.json.
+func loadKBMappings(exeDir string) []KBMapping {
+	p := filepath.Join(exeDir, "kb_mappings.json")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return nil
+	}
+	var mappings []KBMapping
+	_ = json.Unmarshal(data, &mappings)
+	return mappings
+}
+
+// saveKBMapping writes or updates a folder mapping in kb_mappings.json.
+func saveKBMapping(exeDir string, mapping KBMapping) {
+	p := filepath.Join(exeDir, "kb_mappings.json")
+	mappings := loadKBMappings(exeDir)
+	for i, m := range mappings {
+		if m.Slug == mapping.Slug || m.SourcePath == mapping.SourcePath {
+			mappings[i] = mapping
+			data, _ := json.MarshalIndent(mappings, "", "  ")
+			_ = os.WriteFile(p, data, 0644)
+			return
+		}
+	}
+	mappings = append(mappings, mapping)
+	data, _ := json.MarshalIndent(mappings, "", "  ")
+	_ = os.WriteFile(p, data, 0644)
+}
+
+// resumeKBMirrors silently restarts background synchronization for existing mappings.
+func resumeKBMirrors(mappings []KBMapping) {
+	for _, m := range mappings {
+		if _, err := os.Stat(m.SourcePath); err == nil {
+			_ = startRobocopyBackground(m.SourcePath, m.DestPath)
+		}
+	}
+}
+
+// runInitialCopy performs a synchronous one-way copy from src to dst.
+// robocopy exit codes < 8 indicate success (0 = no changes, 1 = files copied, etc.).
+func runInitialCopy(src, dst string) error {
+	cmd := exec.Command("robocopy", src, dst, "/E", "/R:2", "/W:5", "/NFL", "/NDL", "/NJH", "/NJS", "/NP")
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() < 8 {
+				return nil
+			}
+		}
+		return err
+	}
+	return nil
+}
+
+// startRobocopyBackground starts continuous one-way synchronization in the background.
+// Note: We use /E and never /MIR or /PURGE. Raw user files are never deleted or modified.
+func startRobocopyBackground(src, dst string) error {
+	cmd := exec.Command("robocopy", src, dst, "/E", "/R:2", "/W:5", "/MON:1", "/MOT:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NP")
+	if runtime.GOOS == "windows" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
+	}
+	return cmd.Start()
+}
+
+// handleKBFolderPicker runs the Windows folder picker, initial copy pass,
+// background watcher, and registers the mirrored folder with the backend.
+func handleKBFolderPicker(exeDir, token, explicitPath string) {
+	var winPath string
+	var err error
+	if explicitPath != "" {
+		winPath = explicitPath
+	} else if envPath := os.Getenv("STARKLLM_PICK_FOLDER"); envPath != "" {
+		winPath = envPath
+	} else {
+		fmt.Println()
+		fmt.Println("  Opening Windows folder picker…")
+		winPath, err = pickWindowsFolder()
+	}
+	if err != nil || winPath == "" {
+		fmt.Println("  No folder selected. Skipping.")
+		return
+	}
+	fmt.Printf("  Selected: %s\n", winPath)
+
+	folderName := filepath.Base(winPath)
+	slug := slugify(folderName)
+	if slug == "" {
+		slug = "kb-folder"
+	}
+
+	mirrorDest := filepath.Join(exeDir, "knowledge_base_data", slug)
+	if err := os.MkdirAll(mirrorDest, 0755); err != nil {
+		fmt.Printf("  [ERROR] Could not create mirror directory %s: %v\n", mirrorDest, err)
+		return
+	}
+
+	fmt.Printf("  [1/3] Copying files from %s -> %s\n", winPath, mirrorDest)
+	fmt.Println("        (Initial copy pass in progress; indexing begins after copy finishes)...")
+	if err := runInitialCopy(winPath, mirrorDest); err != nil {
+		fmt.Printf("  [ERROR] Initial copy failed: %v\n", err)
+		return
+	}
+	fmt.Println("        ✓ Initial copy pass completed successfully.")
+
+	fmt.Println("  [2/3] Starting continuous background synchronization...")
+	if err := startRobocopyBackground(winPath, mirrorDest); err != nil {
+		fmt.Printf("  [WARNING] Background sync start failed: %v\n", err)
+	} else {
+		fmt.Println("        ✓ Background sync started (one-way copy, non-destructive).")
+	}
+
+	containerPath := "/kb_data/" + slug
+	fmt.Printf("  [3/3] Registering folder with backend as %s…\n", containerPath)
+	folderID, regErr := registerKBFolder(containerPath, folderName, token)
+	if regErr != nil {
+		fmt.Printf("  [WARNING] Registration failed: %v\n", regErr)
+		fmt.Println()
+		fmt.Println("  ┌─────────────────────────────────────────────────────────┐")
+		fmt.Println("  │  Manual step:                                           │")
+		fmt.Println("  │  1. Log in at http://localhost:5173                     │")
+		fmt.Println("  │  2. Go to Knowledge Base → Add Folder                  │")
+		fmt.Printf("  │  3. Enter path: %-40s│\n", containerPath)
+		fmt.Println("  └─────────────────────────────────────────────────────────┘")
+	} else {
+		fmt.Printf("  ✓ Folder registered (ID %d) and indexing started.\n", folderID)
+		saveKBMapping(exeDir, KBMapping{
+			SourcePath:    winPath,
+			Slug:          slug,
+			DestPath:      mirrorDest,
+			ContainerPath: containerPath,
+			FolderName:    folderName,
+			CreatedAt:     time.Now().Format(time.RFC3339),
+		})
+	}
+}
+
+// pickWindowsFolder opens the native Windows folder picker dialog via PowerShell.
+func pickWindowsFolder() (string, error) {
+	psScript := `
+$app = New-Object -ComObject Shell.Application
+$folder = $app.BrowseForFolder(0, 'Select a folder to add to StarkLLM Knowledge Base', 0)
+if ($folder) { $folder.Self.Path } else { '' }
+`
+	out, err := exec.Command(
+		"powershell", "-NoProfile", "-Command", psScript,
+	).Output()
+	if err != nil {
+		return "", fmt.Errorf("PowerShell folder picker failed: %w", err)
+	}
+	path := strings.TrimSpace(string(out))
+	return path, nil
+}
+
+// slugify converts a folder display name to a safe directory slug.
+func slugify(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else if r == ' ' || r == '_' || r == '-' {
+			b.WriteByte('-')
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	if len(s) > 40 {
+		s = s[:40]
+	}
+	return s
+}
+
+// KBFolderRegistration is the minimal API response structure.
+type KBFolderRegistration struct {
+	ID int `json:"id"`
+}
+
+// registerKBFolder calls the loopback-only launcher endpoint.
+// It supplies the launcher token and waits if the user has not logged in yet.
+func registerKBFolder(containerPath, displayName, token string) (int, error) {
+	type reqBody struct {
+		FolderPath    string `json:"folder_path"`
+		FolderName    string `json:"folder_name"`
+		LauncherToken string `json:"launcher_token"`
+	}
+	body := reqBody{
+		FolderPath:    containerPath,
+		FolderName:    displayName,
+		LauncherToken: token,
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	client := http.Client{Timeout: 10 * time.Second}
+	var lastErr error
+
+	for attempt := 0; attempt < 30; attempt++ {
+		req, err := http.NewRequest("POST", "http://127.0.0.1:8000/launcher/register-kb-folder",
+			strings.NewReader(string(bodyBytes)))
+		if err != nil {
+			return 0, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("connection failed: %w", err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 201 || resp.StatusCode == 200 {
+			var result KBFolderRegistration
+			_ = json.NewDecoder(resp.Body).Decode(&result)
+			return result.ID, nil
+		}
+
+		if resp.StatusCode == 401 {
+			if attempt%4 == 0 {
+				fmt.Println("  [INFO] Please log in to StarkLLM at http://localhost:5173 to complete registration...")
+			}
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		var errResp struct {
+			Detail string `json:"detail"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
+		msg := errResp.Detail
+		if msg == "" {
+			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+		}
+		return 0, fmt.Errorf("%s", msg)
+	}
+
+	if lastErr != nil {
+		return 0, lastErr
+	}
+	return 0, fmt.Errorf("timeout waiting for authenticated user session at http://localhost:5173")
 }

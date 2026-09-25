@@ -19,15 +19,26 @@
 - Source headers in the UI now display `filename (Page 4)` instead of bare filenames.
 - WS and KB source labels are delimited with `|` (not `,`) in HTTP headers to avoid ambiguity with locator text that may itself contain commas.
 
-### B. Global Knowledge Base — interval-poll folder sync
+### B. Global Knowledge Base — Real Windows folder mapping & interval-poll sync
 
-- `KBService` gains a background daemon thread (`KB-Folder-Sync-Watcher`) that polls active folders every `KB_AUTO_SYNC_INTERVAL_SECONDS` (default **30 s**, env-tunable).
-- **Detection mechanism**: `os.walk` + `os.path.getmtime` — **not** a kernel filesystem watcher (inotify / ReadDirectoryChangesW). Changes are detected within the poll interval, not instantly.
-- **Docker bind-mount constraint**: the folder path stored in the DB must be the *container-visible* path (e.g. `/kb_data/subfolder`), not a Windows host path (`C:\...`). Windows host paths are not reachable from inside the Docker container and will be silently skipped by the watcher (logged at DEBUG level). The `/kb_data` volume is bound to `./knowledge_base_data/` in the project root.
-- File-system changes are debounced for `KB_SYNC_DEBOUNCE_SECONDS` (default **3 s**) before triggering `sync_folder()`. The loop sleeps in 1 s ticks and evaluates pending debounces on every tick — so a change is picked up within ≈ debounce_window seconds after detection, not only at the next full poll boundary.
-- Overlap-safe via existing `_acquire_sync_lock()` — if a sync is in flight, the duplicate trigger is dropped.
-- Thread starts on FastAPI `startup` and stops cleanly on `shutdown` (max 3 s join).
-- No new dependencies: stdlib `threading`, `os.walk`, `os.path.getmtime`.
+- **Windows folder mapping (Phase 1.5B)**:
+  - The native Windows launcher (`start.exe`) allows mapping local Windows folders via `start.exe --add-folder` or the `[A]` command.
+  - When a folder is mapped, the launcher copies files into `./knowledge_base_data/<slug>/` using a one-way `robocopy /E` background process (`/MON:1 /MOT:1`).
+  - The initial copy pass completes synchronously before indexing begins.
+  - Changes in a mapped Windows folder appear within about one minute (robocopy `/MOT:1` plus KB poll interval). Not a live, continuous, or kernel watcher.
+  - Raw user files on Windows are never deleted or modified. Existing files in destination outside the source tree are preserved.
+- **Explicit rejection of Windows paths in UI**:
+  - The web UI detects Windows paths (e.g. `C:\...`) and prevents submission, explaining the launcher mirror workflow.
+  - The backend returns HTTP 422 if a Windows path is sent directly, preventing un-indexable configurations.
+  - Inaccessible paths log a `WARNING` in the watcher (no silent skipping at DEBUG level).
+- **Supported KB file formats**:
+  - Knowledge Base indexes: **PDF**, **DOCX**, **PNG**, **JPG**, **JPEG**, **TXT**, **MD**, **HTML**.
+  - **CSV** and **JSON** are intentionally excluded from KB indexing until dedicated tabular chunkers are implemented (they remain supported in Workspace uploads).
+- **Sync & Polling details**:
+  - `KBService` background thread (`KB-Folder-Sync-Watcher`) polls active folders every `KB_AUTO_SYNC_INTERVAL_SECONDS` (default **30 s**, env-tunable).
+  - **Detection mechanism**: `os.walk` + `os.path.getmtime` — **not** a kernel filesystem watcher. Changes are detected within the poll interval.
+  - File-system changes are debounced for `KB_SYNC_DEBOUNCE_SECONDS` (default **3 s**) before triggering `sync_folder()`.
+  - Overlap-safe via `_acquire_sync_lock()` — duplicate in-flight syncs are skipped.
 
 ---
 

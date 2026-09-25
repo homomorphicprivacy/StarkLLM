@@ -594,8 +594,8 @@ export default function App() {
             role: 'assistant',
             content: fullText,
             kbUsed: kbUsedHeader,
-            kbSources: kbSourcesHeader ? kbSourcesHeader.split(',').filter(Boolean) : [],
-            wsSources: wsSourcesHeader ? wsSourcesHeader.split(',').filter(Boolean) : [],
+            kbSources: kbSourcesHeader ? kbSourcesHeader.split('|').filter(Boolean) : [],
+            wsSources: wsSourcesHeader ? wsSourcesHeader.split('|').filter(Boolean) : [],
             webSources: webSourcesData
           };
           return msgs;

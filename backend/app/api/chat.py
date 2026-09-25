@@ -43,7 +43,7 @@ def _build_citation_label(r: dict) -> tuple[str, str]:
             except (ValueError, TypeError):
                 locator = f"Page {meta['page']}"
         elif meta.get("section"):
-            chunk_part = f", Chunk {meta['chunk']}" if meta.get("chunk") else ""
+            chunk_part = f" Chunk {meta['chunk']}" if meta.get("chunk") else ""
             locator = f"Section: '{meta['section']}'{chunk_part}"
         elif meta.get("chunk"):
             locator = f"Chunk {meta['chunk']}"
@@ -596,8 +596,8 @@ WEB SEARCH RESULTS (LIVE DATA)
                 headers={
                     "X-Chat-ID": str(chat_obj.id),
                     "X-KB-Used": "true" if (req.use_knowledge_base and bool(kb_results)) else "false",
-                    "X-KB-Sources": urllib.parse.quote(",".join(kb_sources)),
-                    "X-WS-Sources": urllib.parse.quote(",".join(ws_sources)),
+                    "X-KB-Sources": urllib.parse.quote("|".join(kb_sources)),
+                    "X-WS-Sources": urllib.parse.quote("|".join(ws_sources)),
                     "X-Web-Sources": urllib.parse.quote(",".join(web_sources)),
                     "X-Web-Sources-Urls": urllib.parse.quote(",".join(web_source_urls)),
                     "X-Chat-Renamed": "true" if chat_renamed else "false",
@@ -623,8 +623,8 @@ WEB SEARCH RESULTS (LIVE DATA)
             kb_used_val = "true" if (req.use_knowledge_base and bool(kb_results)) else "false"
             response.headers["X-Chat-ID"] = str(chat_obj.id)
             response.headers["X-KB-Used"] = kb_used_val
-            response.headers["X-KB-Sources"] = urllib.parse.quote(",".join(kb_sources))
-            response.headers["X-WS-Sources"] = urllib.parse.quote(",".join(ws_sources))
+            response.headers["X-KB-Sources"] = urllib.parse.quote("|".join(kb_sources))
+            response.headers["X-WS-Sources"] = urllib.parse.quote("|".join(ws_sources))
             response.headers["X-Web-Sources"] = urllib.parse.quote(",".join(web_sources))
             response.headers["X-Web-Sources-Urls"] = urllib.parse.quote(",".join(web_source_urls))
             response.headers["X-Chat-Renamed"] = "true" if chat_renamed else "false"

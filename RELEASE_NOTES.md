@@ -1,8 +1,31 @@
 # StarkLLM Release Notes
 
-**Version:** StarkLLM v1.0.0-beta  
+**Latest branch:** `phase-1.5-citations-and-gkb-sync`  
+**Base version:** StarkLLM v1.0.0-beta  
 **Snapshot Date:** 2026-09-09  
 **Status:** Official Research Beta Snapshot (Windows)
+
+---
+
+## Phase 1.5 — Honest Citations + Live KB Folder Watcher *(branch: phase-1.5-citations-and-gkb-sync)*
+
+### A. Citations — page / section locators
+
+- **PDF**: Source headers now show `filename (Page N)` using the 1-indexed PDF page number stored in Chroma metadata.
+- **DOCX**: Parser groups paragraphs by heading style (Heading 1/2, Title). Each group emits a `Section: 'Title' ChunkN` locator — no invented paragraph numbers.
+- **TXT / MD / HTML / CSV / JSON**: Each semantic chunk carries a `Chunk N` locator.
+- **Images**: Vision-described images carry an `Image` locator.
+- All locators flow from `rag_service.py` (workspace RAG) and `kb_service.py` (personal KB indexer) into Chroma metadata, then through `_build_citation_label()` in `chat.py` into the LLM context window and the `X-WS-Sources` / `X-KB-Sources` response headers.
+- Source headers in the UI now display `filename (Page 4)` instead of bare filenames.
+- WS and KB source labels are delimited with `|` (not `,`) in HTTP headers to avoid ambiguity with locator text that may itself contain commas.
+
+### B. Global Knowledge Base — live folder watcher
+
+- `KBService` gains a background daemon thread (`KB-Folder-Sync-Watcher`) that polls active folders every `KB_AUTO_SYNC_INTERVAL_SECONDS` (default **30 s**, env-tunable).
+- File-system changes are debounced for `KB_SYNC_DEBOUNCE_SECONDS` (default **3 s**) before triggering `sync_folder()`.
+- Thread uses the existing `_acquire_sync_lock()` guard — concurrent syncs on the same folder are blocked.
+- Thread starts on FastAPI `startup` and stops cleanly on `shutdown` (max 3 s join).
+- No dependencies added: uses stdlib `threading`, `os.walk`, `os.path.getmtime`.
 
 ---
 

@@ -80,6 +80,15 @@ class SyncFolderResponse(BaseModel):
     deleted: int
     indexed: int
     failed: int
+    message: Optional[str] = None
+    is_syncing: Optional[bool] = None
+
+
+class FolderStatusResponse(BaseModel):
+    folder_id: int
+    is_syncing: bool
+    is_active: bool
+    last_indexed_at: Optional[datetime] = None
 
 
 class BrowseEntry(BaseModel):

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     # Knowledge Base — mounted Docker volume path
     KB_DATA_DIR: str = "/kb_data"
+    KB_AUTO_SYNC_INTERVAL_SECONDS: int = int(os.getenv("KB_AUTO_SYNC_INTERVAL_SECONDS", "30"))
+    KB_SYNC_DEBOUNCE_SECONDS: int = int(os.getenv("KB_SYNC_DEBOUNCE_SECONDS", "3"))
     
     # Auth
     SECRET_KEY: str = "starkllm_research_beta_secure_fallback_key_2026_change_in_production"

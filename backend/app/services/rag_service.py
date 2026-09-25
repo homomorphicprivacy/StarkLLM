@@ -150,159 +150,204 @@ class RAGService :
                     page =doc .load_page (page_num )
                     text =page .get_text ("text")
 
-                    if text and text .strip ():
-                        page_chunks =self ._semantic_chunk_text (text )
-                        for idx ,chunk in enumerate (page_chunks ):
-                            if chunk .strip ():
-                                chunks .append (chunk .strip ())
-                                metadatas .append ({"source":file_path ,"page":page_num })
-                                ids .append (f"{prefix }_{basename }_p{page_num }_c{idx }")
-                                pdf_chunks_created +=1 
-                    else :
-                        logger.info (
-                        f"RAG: Page {page_num } has no native text — trying OCR…"
+                    if text and text.strip():
+                        page_chunks = self._semantic_chunk_text(text)
+                        for idx, chunk in enumerate(page_chunks):
+                            if chunk.strip():
+                                chunks.append(chunk.strip())
+                                metadatas.append({
+                                    "source": file_path,
+                                    "page": page_num,
+                                    "locator": f"Page {page_num + 1}",
+                                    "chunk": idx + 1
+                                })
+                                ids.append(f"{prefix}_{basename}_p{page_num}_c{idx}")
+                                pdf_chunks_created += 1
+                    else:
+                        logger.info(
+                            f"RAG: Page {page_num} has no native text — trying OCR…"
                         )
-                        temp_path =None 
-                        try :
-                            pix =page .get_pixmap ()
-                            with tempfile .NamedTemporaryFile (
-                            suffix =".png",delete =False 
-                            )as tmp :
-                                temp_path =tmp .name 
-                            pix .save (temp_path )
+                        temp_path = None
+                        try:
+                            pix = page.get_pixmap()
+                            with tempfile.NamedTemporaryFile(
+                                suffix=".png", delete=False
+                            ) as tmp:
+                                temp_path = tmp.name
+                            pix.save(temp_path)
 
-                            import pytesseract 
-                            from PIL import Image 
+                            import pytesseract
+                            from PIL import Image
 
-                            ocr_text =pytesseract .image_to_string (
-                            Image .open (temp_path )
+                            ocr_text = pytesseract.image_to_string(
+                                Image.open(temp_path)
                             )
 
-                            if ocr_text and len (ocr_text .strip ())>50 :
-                                logger.info (
-                                f"RAG: Tesseract extracted "
-                                f"{len (ocr_text .strip ())} chars from page {page_num }"
+                            if ocr_text and len(ocr_text.strip()) > 50:
+                                logger.info(
+                                    f"RAG: Tesseract extracted "
+                                    f"{len(ocr_text.strip())} chars from page {page_num}"
                                 )
-                                page_chunks =self ._semantic_chunk_text (ocr_text )
-                                for idx ,chunk in enumerate (page_chunks ):
-                                    if chunk .strip ():
-                                        chunks .append (chunk .strip ())
-                                        metadatas .append (
-                                        {
-                                        "source":file_path ,
-                                        "page":page_num ,
-                                        "type":"ocr_fallback",
-                                        }
-                                        )
-                                        ids .append (
-                                        f"{prefix }_{basename }_p{page_num }_ocr_{idx }"
-                                        )
-                                        pdf_chunks_created +=1 
-                            else :
-                                logger.warning (
-                                f"RAG: Tesseract insufficient — falling back to Vision model…"
+                                page_chunks = self._semantic_chunk_text(ocr_text)
+                                for idx, chunk in enumerate(page_chunks):
+                                    if chunk.strip():
+                                        chunks.append(chunk.strip())
+                                        metadatas.append({
+                                            "source": file_path,
+                                            "page": page_num,
+                                            "type": "ocr_fallback",
+                                            "locator": f"Page {page_num + 1} (OCR)",
+                                            "chunk": idx + 1
+                                        })
+                                        ids.append(f"{prefix}_{basename}_p{page_num}_ocr_{idx}")
+                                        pdf_chunks_created += 1
+                            else:
+                                logger.warning(
+                                    f"RAG: Tesseract insufficient — falling back to Vision model…"
                                 )
-                                pdf_vision_prompt =(
-                                "This is a scanned page from a PDF document. "
-                                "It may be a filled form, certificate, or template. "
-                                "Please extract the content carefully, paying special attention "
-                                "to the difference between the original template text (e.g., "
-                                "placeholders, labels) and the actual filled-in values. "
-                                "Identify and structure key information: "
-                                "1. Clearly separate the template structure from the filled content. "
-                                "2. Prioritize extracting the filled-in values (e.g., names, dates, "
-                                "addresses, company names, signatures). "
-                                "3. If fields use different font sizes, handwriting, or colors, "
-                                "pay special attention to those areas as they are usually the filled values. "
-                                "4. Provide a structured summary focusing on what was actually entered "
-                                "into the document, followed by a detailed transcription."
+                                pdf_vision_prompt = (
+                                    "This is a scanned page from a PDF document. "
+                                    "It may be a filled form, certificate, or template. "
+                                    "Please extract the content carefully, paying special attention "
+                                    "to the difference between the original template text (e.g., "
+                                    "placeholders, labels) and the actual filled-in values. "
+                                    "Identify and structure key information: "
+                                    "1. Clearly separate the template structure from the filled content. "
+                                    "2. Prioritize extracting the filled-in values (e.g., names, dates, "
+                                    "addresses, company names, signatures). "
+                                    "3. If fields use different font sizes, handwriting, or colors, "
+                                    "pay special attention to those areas as they are usually the filled values. "
+                                    "4. Provide a structured summary focusing on what was actually entered "
+                                    "into the document, followed by a detailed transcription."
                                 )
-                                description =vision_service .generate_image_description (
-                                temp_path ,prompt =pdf_vision_prompt 
+                                description = vision_service.generate_image_description(
+                                    temp_path, prompt=pdf_vision_prompt
                                 )
-                                if description and description .strip ():
-                                    chunks .append (description .strip ())
-                                    metadatas .append (
-                                    {
-                                    "source":file_path ,
-                                    "page":page_num ,
-                                    "type":"vision_fallback",
-                                    }
+                                if description and description.strip():
+                                    chunks.append(description.strip())
+                                    metadatas.append({
+                                        "source": file_path,
+                                        "page": page_num,
+                                        "type": "vision_fallback",
+                                        "locator": f"Page {page_num + 1} (Vision)",
+                                        "chunk": 1
+                                    })
+                                    ids.append(f"{prefix}_{basename}_p{page_num}_vision")
+                                    pdf_chunks_created += 1
+                                    logger.info(
+                                        f"RAG: Vision description generated for page {page_num} ({len(description)} chars)"
                                     )
-                                    ids .append (
-                                    f"{prefix }_{basename }_p{page_num }_vision"
+                                else:
+                                    logger.info(
+                                        f"RAG: Vision model returned empty for page {page_num}"
                                     )
-                                    pdf_chunks_created +=1 
-                                    logger.info (
-                                    f"RAG: Vision description generated for page "
-                                    f"{page_num } ({len (description )} chars)"
-                                    )
-                                else :
-                                    logger.info (
-                                    f"RAG: Vision model returned empty for page {page_num }"
-                                    )
-                        except Exception as ocr_err :
-                            logger.error (
-                            f"RAG: OCR/Vision fallback failed for page {page_num }: {ocr_err }"
+                        except Exception as ocr_err:
+                            logger.error(
+                                f"RAG: OCR/Vision fallback failed for page {page_num}: {ocr_err}"
                             )
-                        finally :
-                            if temp_path and os .path .exists (temp_path ):
-                                os .remove (temp_path )
+                        finally:
+                            if temp_path and os.path.exists(temp_path):
+                                os.remove(temp_path)
 
-                logger.info (
-                f"RAG: PDF processing complete — {pdf_chunks_created } chunk(s) created"
+                logger.info(
+                    f"RAG: PDF processing complete — {pdf_chunks_created} chunk(s) created"
                 )
 
-                # ---------------------------------------------------------------- Images
-            elif file_ext in [".png",".jpg",".jpeg"]:
-                description =vision_service .generate_image_description (file_path )
-                if description :
-                    chunks .append (description )
-                    metadatas .append ({"source":file_path ,"type":"image_description"})
-                    ids .append (f"{prefix }_{basename }_desc")
+            # ---------------------------------------------------------------- Images
+            elif file_ext in [".png", ".jpg", ".jpeg"]:
+                description = vision_service.generate_image_description(file_path)
+                if description:
+                    chunks.append(description)
+                    metadatas.append({
+                        "source": file_path,
+                        "type": "image_description",
+                        "locator": "Image"
+                    })
+                    ids.append(f"{prefix}_{basename}_desc")
 
-                    # ---------------------------------------------------------------- Plain text / Markdown
-            elif file_ext in [".txt",".md"]:
-                with open (file_path ,"r",encoding ="utf-8",errors ="ignore")as f :
-                    text =f .read ()
-                file_chunks =self ._semantic_chunk_text (text )
-                for idx ,chunk in enumerate (file_chunks ):
-                    if chunk .strip ():
-                        chunks .append (chunk .strip ())
-                        metadatas .append ({"source":file_path })
-                        ids .append (f"{prefix }_{basename }_c{idx }")
+            # ---------------------------------------------------------------- Plain text / Markdown
+            elif file_ext in [".txt", ".md"]:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+                file_chunks = self._semantic_chunk_text(text)
+                for idx, chunk in enumerate(file_chunks):
+                    if chunk.strip():
+                        chunks.append(chunk.strip())
+                        metadatas.append({
+                            "source": file_path,
+                            "type": "text",
+                            "chunk": idx + 1,
+                            "locator": f"Chunk {idx + 1}"
+                        })
+                        ids.append(f"{prefix}_{basename}_c{idx}")
 
-                        # ---------------------------------------------------------------- HTML
-            elif file_ext ==".html":
-                with open (file_path ,"r",encoding ="utf-8",errors ="ignore")as f :
-                    html_content =f .read ()
-                extractor =HTMLTextExtractor ()
-                extractor .feed (html_content )
-                text =extractor .get_data ()
-                file_chunks =self ._semantic_chunk_text (text )
-                for idx ,chunk in enumerate (file_chunks ):
-                    if chunk .strip ():
-                        chunks .append (chunk .strip ())
-                        metadatas .append ({"source":file_path ,"type":"html"})
-                        ids .append (f"{prefix }_{basename }_c{idx }")
+            # ---------------------------------------------------------------- HTML
+            elif file_ext == ".html":
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    html_content = f.read()
+                extractor = HTMLTextExtractor()
+                extractor.feed(html_content)
+                text = extractor.get_data()
+                file_chunks = self._semantic_chunk_text(text)
+                for idx, chunk in enumerate(file_chunks):
+                    if chunk.strip():
+                        chunks.append(chunk.strip())
+                        metadatas.append({
+                            "source": file_path,
+                            "type": "html",
+                            "chunk": idx + 1,
+                            "locator": f"Chunk {idx + 1}"
+                        })
+                        ids.append(f"{prefix}_{basename}_c{idx}")
 
-                        # ---------------------------------------------------------------- DOCX
-            elif file_ext ==".docx":
-                try :
-                    import docx # python-docx
+            # ---------------------------------------------------------------- DOCX
+            elif file_ext == ".docx":
+                try:
+                    import docx
 
-                    doc =docx .Document (file_path )
-                    text ="\n".join (
-                    [p .text for p in doc .paragraphs if p .text .strip ()]
-                    )
-                    file_chunks =self ._semantic_chunk_text (text )
-                    for idx ,chunk in enumerate (file_chunks ):
-                        if chunk .strip ():
-                            chunks .append (chunk .strip ())
-                            metadatas .append ({"source":file_path ,"type":"docx"})
-                            ids .append (f"{prefix }_{basename }_c{idx }")
-                except Exception as docx_err :
-                    logger.error (f"RAG: DOCX processing failed for {file_path }: {docx_err }")
+                    doc = docx.Document(file_path)
+                    sections = []
+                    current_heading = "General"
+                    current_texts = []
+                    for p in doc.paragraphs:
+                        p_text = p.text.strip()
+                        if not p_text:
+                            continue
+                        style_name = getattr(getattr(p, 'style', None), 'name', '') or ''
+                        if 'Heading' in style_name or 'Title' in style_name:
+                            if current_texts:
+                                sections.append((current_heading, "\n".join(current_texts)))
+                                current_texts = []
+                            current_heading = p_text[:60]
+                        else:
+                            current_texts.append(p_text)
+                    if current_texts:
+                        sections.append((current_heading, "\n".join(current_texts)))
+                    if not sections:
+                        full_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+                        sections = [("General", full_text)]
+
+                    chunk_counter = 0
+                    for sec_title, sec_text in sections:
+                        sec_chunks = self._semantic_chunk_text(sec_text)
+                        for c in sec_chunks:
+                            if c.strip():
+                                chunk_counter += 1
+                                chunks.append(c.strip())
+                                if sec_title and sec_title != "General":
+                                    locator = f"Section: '{sec_title}' (chunk {chunk_counter})"
+                                else:
+                                    locator = f"Chunk {chunk_counter}"
+                                metadatas.append({
+                                    "source": file_path,
+                                    "type": "docx",
+                                    "section": sec_title if sec_title != "General" else "",
+                                    "chunk": chunk_counter,
+                                    "locator": locator
+                                })
+                                ids.append(f"{prefix}_{basename}_c{chunk_counter}")
+                except Exception as docx_err:
+                    logger.error(f"RAG: DOCX processing failed for {file_path}: {docx_err}")
 
         except Exception as e :
             logger.error (f"RAG: Error processing document {file_path }: {e }")

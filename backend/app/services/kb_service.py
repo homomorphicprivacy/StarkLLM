@@ -11,6 +11,8 @@ import json
 import logging
 import hashlib
 import tempfile
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, Optional
@@ -41,6 +43,29 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".png", ".jpg", ".jpeg"}
 
 
 class KBService:
+    def __init__(self):
+        self._sync_mutex = threading.Lock()
+        self._active_sync_folders: set[int] = set()
+        self._folder_snapshots: dict[int, dict[str, float]] = {}
+        self._last_change_detected: dict[int, float] = {}
+        self._watcher_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+    def is_folder_syncing(self, folder_id: int) -> bool:
+        with self._sync_mutex:
+            return folder_id in self._active_sync_folders
+
+    def _acquire_sync_lock(self, folder_id: int) -> bool:
+        with self._sync_mutex:
+            if folder_id in self._active_sync_folders:
+                return False
+            self._active_sync_folders.add(folder_id)
+            return True
+
+    def _release_sync_lock(self, folder_id: int):
+        with self._sync_mutex:
+            self._active_sync_folders.discard(folder_id)
+
     def add_folder(self, db: Session, user_id: int, folder_path: str, folder_name: str = None) -> KnowledgeBaseFolder:
         """
         Registers a new folder for the user.
@@ -211,8 +236,20 @@ class KBService:
         - Finds modified files (updates size/mtime, sets pending, purges existing chunks)
         - Finds deleted files (removes from DB, purges chunks)
         - Automatically triggers indexing for all pending documents
+        Safe overlap prevention: skips duplicate concurrent executions.
         Returns a stats dictionary: {'added': int, 'updated': int, 'deleted': int, 'indexed': int, 'failed': int}
         """
+        if not self._acquire_sync_lock(folder_id):
+            logger.info(f"KB: Sync for folder ID {folder_id} is already in progress. Skipping duplicate request.")
+            return {
+                "status": "already_syncing",
+                "added": 0,
+                "updated": 0,
+                "deleted": 0,
+                "indexed": 0,
+                "failed": 0
+            }
+
         try:
             folder = db.query(KnowledgeBaseFolder).filter(KnowledgeBaseFolder.id == folder_id).first()
             if not folder:
@@ -333,6 +370,8 @@ class KBService:
             db.rollback()
             logger.error(f"Error syncing folder ID {folder_id}: {e}", exc_info=True)
             raise
+        finally:
+            self._release_sync_lock(folder_id)
 
     def get_folder_documents(self, db: Session, folder_id: int) -> list[KnowledgeBaseDocument]:
         """
@@ -430,21 +469,40 @@ class KBService:
         file_type = doc.file_type.lower()
         extracted_text = ""
 
-        try:
-            # 1. Content Extraction
+            # 1. Content Extraction & Chunking with Honest Locators
+            chunks = []
+            metadatas = []
+            ids = []
+            file_prefix = hashlib.md5(file_path.encode()).hexdigest()[:8]
+
             if file_type == "pdf":
                 if not fitz:
                     raise ImportError("PyMuPDF (fitz) is not installed")
-                logger.info(f"KB: Extracting PDF text: {file_path}")
+                logger.info(f"KB: Extracting PDF page by page: {file_path}")
                 pdf_doc = fitz.open(file_path)
-                pages_text = []
+                pdf_chunk_count = 0
                 for page_num in range(len(pdf_doc)):
                     page = pdf_doc.load_page(page_num)
                     text = page.get_text("text")
                     if text and text.strip():
-                        pages_text.append(text.strip())
+                        page_chunks = rag_service._semantic_chunk_text(text)
+                        for idx, chunk in enumerate(page_chunks):
+                            if chunk.strip():
+                                pdf_chunk_count += 1
+                                chunks.append(chunk.strip())
+                                metadatas.append({
+                                    "source": "knowledge_base",
+                                    "user_id": folder.user_id,
+                                    "folder_id": doc.folder_id,
+                                    "document_id": document_id,
+                                    "file_name": doc.file_name,
+                                    "file_path": file_path,
+                                    "chunk_index": pdf_chunk_count,
+                                    "page": page_num,
+                                    "locator": f"Page {page_num + 1}"
+                                })
+                                ids.append(f"kb_doc_{document_id}_{file_prefix}_p{page_num}_c{idx}")
                     else:
-                        logger.info(f"KB: PDF page {page_num} has no text, falling back to vision description")
                         temp_path = None
                         try:
                             pix = page.get_pixmap()
@@ -462,39 +520,99 @@ class KBService:
                                 temp_path, prompt=pdf_vision_prompt
                             )
                             if description and description.strip():
-                                pages_text.append(description.strip())
+                                pdf_chunk_count += 1
+                                chunks.append(description.strip())
+                                metadatas.append({
+                                    "source": "knowledge_base",
+                                    "user_id": folder.user_id,
+                                    "folder_id": doc.folder_id,
+                                    "document_id": document_id,
+                                    "file_name": doc.file_name,
+                                    "file_path": file_path,
+                                    "chunk_index": pdf_chunk_count,
+                                    "page": page_num,
+                                    "locator": f"Page {page_num + 1} (Vision)"
+                                })
+                                ids.append(f"kb_doc_{document_id}_{file_prefix}_p{page_num}_vis")
                         except Exception as vis_err:
                             logger.error(f"KB: Vision fallback failed on page {page_num}: {vis_err}")
                         finally:
                             if temp_path and os.path.exists(temp_path):
                                 os.remove(temp_path)
-                extracted_text = "\n\n".join(pages_text)
 
             elif file_type == "docx":
                 if not docx:
                     raise ImportError("python-docx is not installed")
-                logger.info(f"KB: Extracting DOCX text: {file_path}")
+                logger.info(f"KB: Extracting DOCX sections: {file_path}")
                 docx_doc = docx.Document(file_path)
-                paragraphs = [p.text for p in docx_doc.paragraphs if p.text.strip()]
-                extracted_text = "\n".join(paragraphs)
+                sections = []
+                current_heading = "General"
+                current_texts = []
+                for p in docx_doc.paragraphs:
+                    p_text = p.text.strip()
+                    if not p_text:
+                        continue
+                    style_name = getattr(getattr(p, 'style', None), 'name', '') or ''
+                    if 'Heading' in style_name or 'Title' in style_name:
+                        if current_texts:
+                            sections.append((current_heading, "\n".join(current_texts)))
+                            current_texts = []
+                        current_heading = p_text[:60]
+                    else:
+                        current_texts.append(p_text)
+                if current_texts:
+                    sections.append((current_heading, "\n".join(current_texts)))
+                if not sections:
+                    full_text = "\n".join([p.text for p in docx_doc.paragraphs if p.text.strip()])
+                    sections = [("General", full_text)]
+
+                docx_chunk_count = 0
+                for sec_title, sec_text in sections:
+                    sec_chunks = rag_service._semantic_chunk_text(sec_text)
+                    for c in sec_chunks:
+                        if c.strip():
+                            docx_chunk_count += 1
+                            chunks.append(c.strip())
+                            locator = f"Section: '{sec_title}' (chunk {docx_chunk_count})" if sec_title != "General" else f"Chunk {docx_chunk_count}"
+                            metadatas.append({
+                                "source": "knowledge_base",
+                                "user_id": folder.user_id,
+                                "folder_id": doc.folder_id,
+                                "document_id": document_id,
+                                "file_name": doc.file_name,
+                                "file_path": file_path,
+                                "chunk_index": docx_chunk_count,
+                                "section": sec_title if sec_title != "General" else "",
+                                "locator": locator
+                            })
+                            ids.append(f"kb_doc_{document_id}_{file_prefix}_c{docx_chunk_count}")
 
             elif file_type in ["png", "jpg", "jpeg"]:
                 logger.info(f"KB: Generating vision description for image: {file_path}")
                 description = vision_service.generate_image_description(file_path)
                 if description and description.strip():
-                    extracted_text = description.strip()
+                    chunks.append(description.strip())
+                    metadatas.append({
+                        "source": "knowledge_base",
+                        "user_id": folder.user_id,
+                        "folder_id": doc.folder_id,
+                        "document_id": document_id,
+                        "file_name": doc.file_name,
+                        "file_path": file_path,
+                        "chunk_index": 1,
+                        "locator": "Image"
+                    })
+                    ids.append(f"kb_doc_{document_id}_{file_prefix}_desc")
                 else:
                     raise ValueError("Vision service returned empty description for the image")
 
             else:
                 raise ValueError(f"Unsupported file type for indexing: {file_type}")
 
-            # 2. Chunking
-            chunks = rag_service._semantic_chunk_text(extracted_text)
             if not chunks:
                 raise ValueError("No text content could be extracted from this document")
 
-            # 3. Vector Database Sync (ChromaDB)
+            # 2. Vector Database Sync (ChromaDB)
             collection = rag_service.get_or_create_kb_collection(folder.user_id)
             
             # Delete any existing chunks for this specific document_id
@@ -508,23 +626,6 @@ class KBService:
             embedding_model = self.get_embedding_model()
             logger.info(f"KB: Generating embeddings with model '{embedding_model}' for {len(chunks)} chunks")
             embeddings = llm_service.generate_embeddings_batch(embedding_model, chunks)
-
-            # Metadata and IDs
-            metadatas = []
-            ids = []
-            file_prefix = hashlib.md5(file_path.encode()).hexdigest()[:8]
-
-            for idx, chunk in enumerate(chunks):
-                metadatas.append({
-                    "source": "knowledge_base",
-                    "user_id": folder.user_id,
-                    "folder_id": doc.folder_id,
-                    "document_id": document_id,
-                    "file_name": doc.file_name,
-                    "file_path": file_path,
-                    "chunk_index": idx
-                })
-                ids.append(f"kb_doc_{document_id}_{file_prefix}_c{idx}")
 
             # Upsert vectors (safe for re-indexing — avoids duplicate ID errors)
             collection.upsert(
@@ -576,11 +677,104 @@ class KBService:
                 success = self.index_document(db, doc.id)
                 if success:
                     successful_ids.append(doc.id)
-                    
             return successful_ids
         except Exception as e:
             logger.error(f"KB: Error in index_pending_documents: {e}", exc_info=True)
             raise
+
+    def _take_folder_snapshot(self, folder_path_str: str) -> dict[str, float]:
+        snapshot = {}
+        if not os.path.exists(folder_path_str):
+            return snapshot
+        try:
+            for root, dirs, files in os.walk(folder_path_str):
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for file in files:
+                    ext = os.path.splitext(file)[1].lower()
+                    if ext in SUPPORTED_EXTENSIONS:
+                        full_p = os.path.abspath(os.path.join(root, file))
+                        try:
+                            snapshot[full_p] = os.path.getmtime(full_p)
+                        except OSError:
+                            pass
+        except Exception as e:
+            logger.warning(f"KB Watcher snapshot error for '{folder_path_str}': {e}")
+        return snapshot
+
+    def _watcher_loop(self):
+        logger.info("KB: Background folder sync watcher started.")
+        while not self._stop_event.is_set():
+            try:
+                interval = getattr(settings, "KB_AUTO_SYNC_INTERVAL_SECONDS", 30)
+                debounce_window = getattr(settings, "KB_SYNC_DEBOUNCE_SECONDS", 3)
+
+                for _ in range(max(1, interval)):
+                    if self._stop_event.is_set():
+                        break
+                    time.sleep(1)
+
+                if self._stop_event.is_set():
+                    break
+
+                from app.db.session import SessionLocal
+                with SessionLocal() as db:
+                    folders = db.query(KnowledgeBaseFolder).filter(KnowledgeBaseFolder.is_active == 1).all()
+                    for folder in folders:
+                        if self._stop_event.is_set():
+                            break
+                        folder_id = folder.id
+                        folder_path = folder.folder_path
+                        if not os.path.exists(folder_path):
+                            continue
+
+                        current_snap = self._take_folder_snapshot(folder_path)
+                        prev_snap = self._folder_snapshots.get(folder_id)
+
+                        if prev_snap is None:
+                            self._folder_snapshots[folder_id] = current_snap
+                            continue
+
+                        has_changes = (current_snap != prev_snap)
+                        now = time.time()
+
+                        if has_changes:
+                            last_chg = self._last_change_detected.get(folder_id, 0)
+                            if last_chg == 0:
+                                self._last_change_detected[folder_id] = now
+                                logger.info(f"KB Watcher: Change detected in folder ID {folder_id}. Debouncing for {debounce_window}s...")
+                            elif now - last_chg >= debounce_window:
+                                logger.info(f"KB Watcher: Debounce window passed for folder ID {folder_id}. Triggering auto-sync.")
+                                self._last_change_detected.pop(folder_id, None)
+                                self._folder_snapshots[folder_id] = current_snap
+                                self.sync_folder(db, folder_id)
+                        else:
+                            if folder_id in self._last_change_detected:
+                                self._last_change_detected.pop(folder_id, None)
+                                self._folder_snapshots[folder_id] = current_snap
+
+            except Exception as e:
+                logger.error(f"KB Watcher loop encountered error: {e}", exc_info=True)
+                time.sleep(5)
+
+        logger.info("KB: Background folder sync watcher stopped.")
+
+    def start_background_watcher(self):
+        if self._watcher_thread and self._watcher_thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._watcher_thread = threading.Thread(
+            target=self._watcher_loop,
+            name="KB-Folder-Sync-Watcher",
+            daemon=True
+        )
+        self._watcher_thread.start()
+        logger.info("KB: Background folder sync watcher thread initialized.")
+
+    def stop_background_watcher(self):
+        if self._watcher_thread and self._watcher_thread.is_alive():
+            self._stop_event.set()
+            self._watcher_thread.join(timeout=3)
+            logger.info("KB: Background folder sync watcher stopped.")
 
 
 kb_service = KBService()

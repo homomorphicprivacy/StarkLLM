@@ -21,6 +21,44 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _build_citation_label(r: dict) -> tuple[str, str]:
+    """
+    Constructs honest, verifiable citation labels for LLM context and UI headers.
+    PDF: includes 1-indexed page number ('doc.pdf (Page 4)')
+    DOCX: includes section heading or chunk locator ('doc.docx (Section: 'Overview', Chunk 1)')
+    TXT/MD: includes chunk locator ('notes.md (Chunk 2)')
+    """
+    meta = r.get("metadata", {}) or {}
+    filename = (
+        meta.get("file_name")
+        or os.path.basename(meta.get("source") or meta.get("file_path") or "")
+        or "unknown file"
+    )
+    locator = meta.get("locator")
+    if not locator:
+        if "page" in meta and meta["page"] is not None:
+            try:
+                page_val = int(meta["page"]) + 1
+                locator = f"Page {page_val}"
+            except (ValueError, TypeError):
+                locator = f"Page {meta['page']}"
+        elif meta.get("section"):
+            chunk_part = f", Chunk {meta['chunk']}" if meta.get("chunk") else ""
+            locator = f"Section: '{meta['section']}'{chunk_part}"
+        elif meta.get("chunk"):
+            locator = f"Chunk {meta['chunk']}"
+        elif r.get("id") and "_c" in str(r.get("id")):
+            c_part = str(r.get("id")).split("_c")[-1]
+            if c_part.isdigit():
+                locator = f"Chunk {int(c_part) + 1}"
+
+    if locator:
+        label = f"{filename} ({locator})"
+    else:
+        label = filename
+    return label, label
+
+
 class ChatRequest(BaseModel):
     workspace_id: int
     chat_id: Optional[int] = None
@@ -223,13 +261,8 @@ async def chat(
                     use_context_compression=req.use_context_compression,
                 )
                 
-                def _chunk_label(r: dict) -> str:
-                    meta = r.get("metadata", {})
-                    name = (meta.get("file_name") or os.path.basename(meta.get("source") or meta.get("file_path") or ""))
-                    return name or "unknown file"
-
-                ws_ctx = "\n".join(f"[Document: {_chunk_label(r)}]\n{r['content']}" for r in ws_res)
-                kb_ctx = "\n".join(f"[Personal KB Document: {_chunk_label(r)}]\n{r['content']}" for r in kb_res)
+                ws_ctx = "\n\n".join(f"[Document: {_build_citation_label(r)[0]}]\n{r['content']}" for r in ws_res)
+                kb_ctx = "\n\n".join(f"[Personal KB Document: {_build_citation_label(r)[0]}]\n{r['content']}" for r in kb_res)
                 
                 logger.info(f"DEBUG: RAG merged → {len(ws_res)} workspace ({len(ws_ctx)} chars) + {len(kb_res)} KB ({len(kb_ctx)} chars) result(s)")
                 return ws_res, kb_res, ws_ctx, kb_ctx
@@ -289,16 +322,20 @@ async def chat(
         
         # Unpack RAG
         ws_results, kb_results, ws_context, kb_context = rag_data
-        def _c_label(r: dict) -> str:
-            meta = r.get("metadata", {})
-            return meta.get("file_name") or os.path.basename(meta.get("source") or meta.get("file_path") or "") or "unknown file"
-            
-        ws_sources = list({_c_label(r) for r in ws_results if r.get("metadata")}) if ws_results else []
-        kb_sources = list({
-            r.get("metadata", {}).get("file_name") or os.path.basename(r.get("metadata", {}).get("file_path", ""))
-            for r in kb_results
-            if r.get("metadata", {}).get("file_name") or r.get("metadata", {}).get("file_path")
-        }) if kb_results else []
+        
+        ws_sources = []
+        for r in (ws_results or []):
+            if r.get("metadata"):
+                _, ui_lbl = _build_citation_label(r)
+                if ui_lbl not in ws_sources:
+                    ws_sources.append(ui_lbl)
+
+        kb_sources = []
+        for r in (kb_results or []):
+            if r.get("metadata"):
+                _, ui_lbl = _build_citation_label(r)
+                if ui_lbl not in kb_sources:
+                    kb_sources.append(ui_lbl)
 
         # Unpack Web
         web_sources, web_source_urls, web_context = web_data

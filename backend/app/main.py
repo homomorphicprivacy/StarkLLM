@@ -106,3 +106,13 @@ def health_check():
 
 # Include routers
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+from app.services.kb_service import kb_service
+
+@app.on_event("startup")
+def on_startup():
+    kb_service.start_background_watcher()
+
+@app.on_event("shutdown")
+def on_shutdown():
+    kb_service.stop_background_watcher()

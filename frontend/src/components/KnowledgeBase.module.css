@@ -520,6 +520,30 @@
   font-size: 0.75rem;
 }
 
+.inputError {
+  border-color: #ef4444 !important;
+  background-color: rgba(239, 68, 68, 0.05) !important;
+}
+
+.winPathWarning {
+  display: flex;
+  gap: 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.winPathWarning code {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+
 .modalActions {
   display: flex;
   justify-content: flex-end;

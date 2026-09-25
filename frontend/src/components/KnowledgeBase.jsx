@@ -216,14 +216,18 @@ function FolderBrowser({ token, onSelect }) {
 
 // ─── Add Folder Modal ────────────────────────────────────────────────────────
 
+const WIN_PATH_RE = /^[A-Za-z]:[/\\]/;
+
 function AddFolderModal({ onClose, onAdd, loading, error, token }) {
   const [path, setPath]     = useState('');
   const [name, setName]     = useState('');
   const [manualMode, setManualMode] = useState(false);
 
+  const isWindowsPath = WIN_PATH_RE.test(path.trim());
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!path.trim()) return;
+    if (!path.trim() || isWindowsPath) return;
     onAdd(path.trim(), name.trim() || null);
   };
 
@@ -236,22 +240,39 @@ function AddFolderModal({ onClose, onAdd, loading, error, token }) {
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '560px', width: '95%' }}>
+      <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', width: '95%' }}>
         <div className={styles.modalHeader}>
           <span className={styles.modalTitle}><FolderPlus size={18} /> Add Knowledge Base Folder</span>
           <button className={styles.modalClose} onClick={onClose}><X size={18} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.modalBody}>
-          <p className={styles.hint} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Info size={14} /> 
-            This modal is only for registering folders. To remove a folder, use the Remove button on the Knowledge Base page.
-          </p>
+
+          {/* Windows path warning — shown when user types C:\... */}
+          {isWindowsPath && (
+            <div className={styles.winPathWarning}>
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+              <div>
+                <strong>Windows path detected.</strong> Paths like <code>{path.trim().slice(0, 30)}{path.length > 30 ? '…' : ''}</code> are
+                not visible inside the Docker container and cannot be registered here.
+                <br /><br />
+                <strong>Use the StarkLLM launcher instead:</strong>
+                <ol style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                  <li>Close this dialog and stop StarkLLM.</li>
+                  <li>Run <code>start.exe</code> again and press <strong>Y</strong> when prompted to add a folder.</li>
+                  <li>Pick your Windows folder — the launcher will mirror and register it automatically.</li>
+                </ol>
+                <br />
+                <em>Alternative:</em> Copy your files into <code>knowledge_base_data\my-folder\</code> inside
+                the StarkLLM project directory, then register the path <code>/kb_data/my-folder</code> here.
+              </div>
+            </div>
+          )}
 
           {/* Mode toggle */}
           <div className={styles.modeToggle}>
             <span className={styles.modeToggleLabel}>
-              {manualMode ? 'Entering path manually.' : 'Browse to select a folder:'}
+              {manualMode ? 'Entering container path manually.' : 'Browse /kb_data to select a sub-folder:'}
             </span>
             <button type="button" className={styles.modeToggleBtn} onClick={() => setManualMode(m => !m)}>
               {manualMode ? '← Back to browser' : 'Enter path manually'}
@@ -264,10 +285,10 @@ function AddFolderModal({ onClose, onAdd, loading, error, token }) {
           ) : (
             <>
               <label className={styles.label}>
-                Folder Path <span className={styles.required}>*</span>
+                Container Folder Path <span className={styles.required}>*</span>
               </label>
               <input
-                className={styles.input}
+                className={`${styles.input} ${isWindowsPath ? styles.inputError : ''}`}
                 type="text"
                 placeholder="/kb_data/my-documents"
                 value={path}
@@ -276,18 +297,19 @@ function AddFolderModal({ onClose, onAdd, loading, error, token }) {
                 required
               />
               <p className={styles.hint}>
-                Enter the absolute path as seen inside the container (e.g. <code>/kb_data/reports</code>).
+                Enter the path as seen inside the container. Must start with <code>/kb_data/</code>.
+                To index a Windows folder, use <code>start.exe</code> — it handles the mirror automatically.
               </p>
             </>
           )}
 
-          {/* Selected path preview & Name input (shown only if path is selected) */}
-          {path && (
+          {/* Selected path preview & Name input */}
+          {path && !isWindowsPath && (
             <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-tertiary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
               <p className={styles.hint} style={{ margin: '0 0 12px 0' }}>
                 Selected Path: <code style={{ color: 'var(--accent-bright)' }}>{path}</code>
               </p>
-              
+
               <label className={styles.label}>
                 Folder Name <span className={styles.optional}>(optional)</span>
               </label>
@@ -311,7 +333,7 @@ function AddFolderModal({ onClose, onAdd, loading, error, token }) {
             <button type="button" className={styles.btnSecondary} onClick={onClose} disabled={loading}>
               Cancel
             </button>
-            <button type="submit" className={styles.btnPrimary} disabled={loading || !path.trim()}>
+            <button type="submit" className={styles.btnPrimary} disabled={loading || !path.trim() || isWindowsPath}>
               {loading ? <><Loader size={14} className={styles.spin} /> Adding…</> : 'Add Folder'}
             </button>
           </div>

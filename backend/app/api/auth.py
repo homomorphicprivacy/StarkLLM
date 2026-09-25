@@ -51,6 +51,29 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
     return encoded_jwt
 
+def _record_active_session(user: User):
+    """
+    Persists the most recent authenticated user session to disk so the
+    launcher endpoint knows which user to associate mapped folders with.
+    """
+    try:
+        import os
+        import json
+        session_data = {
+            "user_id": user.id,
+            "username": user.username,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        for base_dir in ["/app/data", "data"]:
+            if os.path.exists(base_dir):
+                target_file = os.path.join(base_dir, "active_session.json")
+                with open(target_file, "w", encoding="utf-8") as f:
+                    json.dump(session_data, f)
+                break
+    except Exception:
+        pass
+
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -68,6 +91,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(User).filter(User.username == username).first()
     if user is None:
         raise credentials_exception
+
+    _record_active_session(user)
     return user
 
 @router.post("/register", response_model=UserResponse)
@@ -90,6 +115,7 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
             ws.user_id = new_user.id
         db.commit()
 
+    _record_active_session(new_user)
     return new_user
 
 @router.post("/login", response_model=Token)
@@ -106,6 +132,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+    _record_active_session(user)
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=UserResponse)

@@ -80,6 +80,15 @@ class SyncFolderResponse(BaseModel):
     deleted: int
     indexed: int
     failed: int
+    message: Optional[str] = None
+    is_syncing: Optional[bool] = None
+
+
+class FolderStatusResponse(BaseModel):
+    folder_id: int
+    is_syncing: bool
+    is_active: bool
+    last_indexed_at: Optional[datetime] = None
 
 
 class BrowseEntry(BaseModel):
@@ -196,14 +205,41 @@ def register_folder(
 ):
     """
     Registers a new folder to the user's Knowledge Base.
+
+    The path must be a container-visible path (e.g. /kb_data/subfolder).
+    Windows host paths (C:\\...) are not accessible from inside Docker and will
+    be rejected with a 422 that explains the launcher mirror workflow.
     """
     folder_path_cleaned = body.folder_path.strip()
 
-    # Verify physical path exists
+    # Reject Windows host paths — they are not accessible from the container.
+    # The launcher (start.exe) handles the mirror: it copies the Windows folder
+    # into ./knowledge_base_data/<slug>/ and then registers /kb_data/<slug>.
+    import re as _re
+    if _re.match(r'^[A-Za-z]:[/\\]', folder_path_cleaned) or folder_path_cleaned.startswith('\\\\'):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Windows host paths (e.g. C:\\Users\\...) are not directly accessible "
+                "from inside the Docker container. "
+                "Use the StarkLLM launcher (start.exe) to pick a Windows folder: "
+                "it will mirror your files into the knowledge_base_data/ directory "
+                "and register the correct container path (/kb_data/...) automatically. "
+                "If you want to add a folder manually, copy your files into "
+                "knowledge_base_data\\<folder_name>\\ inside the StarkLLM project "
+                "directory, then register the path /kb_data/<folder_name> here."
+            )
+        )
+
+    # Verify physical path exists inside the container
     if not os.path.exists(folder_path_cleaned):
         raise HTTPException(
             status_code=400,
-            detail="The specified folder path does not exist on the file system."
+            detail=(
+                f"The path '{folder_path_cleaned}' does not exist inside the container. "
+                "Container-visible paths start with /kb_data/. "
+                "Use start.exe to add a Windows folder automatically."
+            )
         )
 
     # Prevent duplicate registrations of the same path for the same user
@@ -234,6 +270,7 @@ def register_folder(
         folder_name=folder_name_cleaned
     )
     return folder
+
 
 
 @router.delete("/folders/{folder_id}", status_code=204)

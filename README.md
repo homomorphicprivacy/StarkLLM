@@ -29,17 +29,16 @@ To run StarkLLM smoothly, you need:
 Before launching StarkLLM, open PowerShell or Command Prompt and pull the recommended local models:
 
 ```bash
-# Recommended default text generation model (7B)
-ollama pull qwen2.5:7b
-
-# Document embedding model (Required for RAG)
-ollama pull nomic-embed-text
+# Shipped default models (configured in .env and docker-compose.yml)
+ollama pull qwen3.8:27b
+ollama pull qwen3-embedding:0.6b
 ```
 
-*Optional alternative models:*
-- Lightweight / 8GB RAM laptops: `ollama pull qwen2.5:3b`
-- High-capacity / 16GB+ VRAM power users: `ollama pull qwen2.5:14b`
-- Multimodal / Vision models: `ollama pull llava`
+*Hardware tiers & alternatives:*
+- **Standard / Power users (16GB+ System RAM / 8GB+ VRAM):** `qwen3.8:27b` + `qwen3-embedding:0.6b` (shipped default)
+- **Mid-tier / 8GB VRAM:** `ollama pull qwen2.5:7b` + `ollama pull nomic-embed-text`
+- **Lightweight / 8GB RAM laptops:** `ollama pull qwen2.5:3b` + `ollama pull nomic-embed-text`
+- **Multimodal / Vision:** `ollama pull llava`
 
 ---
 
@@ -76,7 +75,7 @@ Expected SHA-256 digest: `15aa772d586946af5213dd9a0f74bcf725f87cd15502d23e48cfc8
 1. **Login**: Create a local account upon opening the interface. Authentication is 100% local, backed by SQLite.
 2. **Create a Workspace**: Organize research into distinct workspaces (e.g., "Legal Analysis" or "Codebase Review").
 3. **Upload Documents**: Drag and drop supported files (PDF, DOCX, TXT, MD, CSV, JSON, HTML) into the active workspace.
-4. **Knowledge Base**: Map a permanent local Windows folder to index files globally across all chat sessions.
+4. **Knowledge Base**: Map a permanent local Windows folder using `start.exe` (or place files in `knowledge_base_data/`) to index documents (PDF, DOCX, TXT, MD, HTML, and Images) globally across all chat sessions. Changes in a mapped Windows folder appear within about one minute via interval polling (not a live, continuous, or kernel watcher).
 
 ---
 

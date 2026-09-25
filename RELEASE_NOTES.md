@@ -17,14 +17,14 @@ This is an official frozen research-beta snapshot of StarkLLM, designed for loca
 - **Clean Docker Startup**: Automatic database initialization on clean volume creation without Alembic schema collision.
 - **Pre-Configured Environment**: Ready-to-run `.env` shipped directly in the distribution archive with secure research defaults.
 - **Default Models**:
-  - Chat / Completion: `qwen3.8:27b`
-  - Document Embeddings: `qwen3-embedding:0.6b`
+  - Chat / Completion: `qwen2.5:7b` (or `qwen2.5:3b` for lightweight setups)
+  - Document Embeddings: `nomic-embed-text`
   - Vision (optional): `llava`
 - **Robust Launchers**:
   - `start.exe`, `start.cmd`, and `start.bat` perform automated container cleanup before launch to prevent naming conflicts.
   - Launchers poll backend `/api/system/health` before launching the browser to eliminate HTTP 502 Bad Gateway race conditions.
 - **Onboarding Wizard Resilience**: Exponential backoff and automated retry handling during backend container initialization.
-- **Verified Packaging**: Complete standalone distribution ZIP (~121 MB) with all frontend/backend source assets, launchers, and offline TTS models included.
+- **Verified Packaging**: Complete standalone distribution ZIP with all frontend/backend source assets, launchers, and offline TTS models included.
 
 ---
 
@@ -33,10 +33,10 @@ This is an official frozen research-beta snapshot of StarkLLM, designed for loca
 1. **Operating System**: Windows 10 / 11 with WSL2 enabled.
 2. **Docker Desktop**: Installed and running in the system tray.
 3. **Ollama**: Installed natively on Windows host from [ollama.com](https://ollama.com).
-4. **Required Models**:
+4. **Recommended Models**:
    ```bash
-   ollama pull qwen3.8:27b
-   ollama pull qwen3-embedding:0.6b
+   ollama pull qwen2.5:7b
+   ollama pull nomic-embed-text
    ```
 
 ---
